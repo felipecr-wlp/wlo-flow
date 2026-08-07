@@ -50,22 +50,8 @@ function ShapeNode({ data, selected }) {
 
 const FLOWS_KEY = 'wlo_flows_index'
 
-function storageKey(wsId, flowId) { return `wlo_flow_${wsId}_${flowId}` }
-function loadFlowsFromStorage(wsId) {
-  try { return JSON.parse(localStorage.getItem(FLOWS_KEY + '_' + wsId) || '[]') } catch { return [] }
-}
-function saveFlowsToStorage(wsId, flows) {
-  localStorage.setItem(FLOWS_KEY + '_' + wsId, JSON.stringify(flows))
-}
-function loadFlowFromStorage(wsId, flowId) {
-  try { return JSON.parse(localStorage.getItem(storageKey(wsId, flowId)) || 'null') } catch { return null }
-}
-function saveFlowToStorage(wsId, flow) {
-  localStorage.setItem(storageKey(wsId, flow.id), JSON.stringify(flow))
-}
-function deleteFlowFromStorage(wsId, flowId) {
-  localStorage.removeItem(storageKey(wsId, flowId))
-}
+// API helpers
+function api(wsId, path) { return `/api/flows${path || ''}?workspace_id=${encodeURIComponent(wsId)}` }
 
 export default function FlowApp() {
   const [view, setView] = useState('list')
@@ -91,9 +77,11 @@ export default function FlowApp() {
     try { const m = p.get('members'); if (m) setMembersList(JSON.parse(m)) } catch { }
   }, [])
 
-  const doLoadFlows = useCallback(() => {
-    if (typeof window === 'undefined') return
-    setFlows(loadFlowsFromStorage(wsId))
+  const doLoadFlows = useCallback(async () => {
+    try {
+      const r = await fetch(api(wsId, ''))
+      if (r.ok) setFlows(await r.json())
+    } catch { }
     setLoading(false)
   }, [wsId])
 
@@ -105,24 +93,19 @@ export default function FlowApp() {
     notify(); const ro = new ResizeObserver(notify); ro.observe(document.body); return () => ro.disconnect()
   }, [view])
 
-  function createFlow() {
+  async function createFlow() {
     setCreating(true)
-    const f = { id: 'flow-' + Date.now(), title: 'Nuevo flujo', description: '', nodes: [], edges: [], shares: [], updated_at: new Date().toISOString() }
-    saveFlowToStorage(wsId, f)
-    const idx = loadFlowsFromStorage(wsId)
-    idx.unshift({ id: f.id, title: f.title, nodes: 0, edges: 0, updated_at: f.updated_at })
-    saveFlowsToStorage(wsId, idx)
-    setFlows([...idx])
-    setCreating(false)
-    openFlow(f.id)
+    try {
+      const r = await fetch(api(wsId, ''), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Nuevo flujo' }) })
+      if (r.ok) { const f = await r.json(); setCreating(false); openFlow(f.id) }
+      else setCreating(false)
+    } catch { setCreating(false) }
   }
 
-  function deleteFlow(id) {
+  async function deleteFlow(id) {
     if (!confirm('Eliminar este flujo?')) return
-    deleteFlowFromStorage(wsId, id)
-    const idx = loadFlowsFromStorage(wsId).filter(f => f.id !== id)
-    saveFlowsToStorage(wsId, idx)
-    setFlows([...idx])
+    await fetch(api(wsId, `/${id}`), { method: 'DELETE' })
+    doLoadFlows()
   }
 
   function openFlow(id) { setFlowId(id); setView('editor') }
@@ -179,7 +162,7 @@ function ListView({ flows, loading, creating, wsId, enmarcado, userName, onCreat
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b', marginBottom: 4 }}>{f.title || 'Sin titulo'}</div>
-                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{f.nodes || 0} nodos · {f.edges || 0} conexiones</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{(f.nodes || []).length} nodos · {(f.edges || []).length} conexiones</div>
                     </div>
                     <button onClick={e => { e.stopPropagation(); onDelete(f.id) }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4 }}><Trash2 size={14} /></button>
                   </div>
@@ -222,27 +205,24 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
 
   useEffect(() => {
     if (!flowId) return
-    const f = loadFlowFromStorage(wsId, flowId)
-    if (f) {
-      setTitle(f.title || '')
-      setDescription(f.description || '')
-      setNodes(f.nodes || [])
-      setEdges(f.edges || [])
-      setShares(f.shares || [])
-    }
-    setLoaded(true)
+    fetch(api(wsId, `/${flowId}`)).then(r => r.json()).then(f => {
+      if (f && f.id) {
+        setTitle(f.title || '')
+        setDescription(f.description || '')
+        setNodes(f.nodes || [])
+        setEdges(f.edges || [])
+        setShares(f.shares || [])
+      }
+      setLoaded(true)
+    }).catch(() => setLoaded(true))
   }, [flowId, wsId])
 
-  function persist(n, e) {
-    const idx = loadFlowsFromStorage(wsId)
-    const ix = idx.findIndex(f => f.id === flowId)
-    const meta = { id: flowId, title, nodes: (n || nodes).length, edges: (e || edges).length, updated_at: new Date().toISOString() }
-    if (ix >= 0) idx[ix] = meta; else idx.unshift(meta)
-    saveFlowsToStorage(wsId, idx)
-    saveFlowToStorage(wsId, { id: flowId, title, description, nodes: n || nodes, edges: e || edges, shares, updated_at: meta.updated_at })
+  function save(n, e) {
+    setSaving(true)
+    const body = { title, description, nodes: n || nodes, edges: e || edges, shares }
+    fetch(api(wsId, `/${flowId}`), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .finally(() => setSaving(false))
   }
-
-  function save(n, e) { setSaving(true); setTimeout(() => { persist(n, e); setSaving(false) }, 0) }
   function autoSave(n, e) { if (saveTimer.current) clearTimeout(saveTimer.current); saveTimer.current = setTimeout(() => save(n, e), 800) }
 
   function pushHistory(n, e) { const h = history.current; h.length = historyIdx.current + 1; h.push({ nodes: JSON.parse(JSON.stringify(n)), edges: JSON.parse(JSON.stringify(e)) }); if (h.length > 50) h.shift(); else historyIdx.current++ }
@@ -274,7 +254,7 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
     const already = shares.find(s => s.profile_id === profileId)
     const newShares = already ? shares.filter(s => s.profile_id !== profileId) : [...shares, { profile_id: profileId, permission: 'view' }]
     setShares(newShares)
-    saveFlowToStorage(wsId, { id: flowId, title, description, nodes, edges, shares: newShares, updated_at: new Date().toISOString() })
+    fetch(api(wsId, `/${flowId}`), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shares: newShares }) })
   }
 
   const selCount = nodes.filter(n => n.selected).length
