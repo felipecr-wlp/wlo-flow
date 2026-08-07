@@ -1,3 +1,15 @@
 {
-  "frame-ancestors https://wlo.vercel.app https://wlo-plugin.vercel.app"
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors https://wlo.vercel.app https://wlo-plugin.vercel.app"
+        },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
+    }
+  ]
 }
