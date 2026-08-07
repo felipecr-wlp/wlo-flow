@@ -142,6 +142,37 @@ function ListView({ flows, loading, creating, wsId, enmarcado, userName, onCreat
           {wsId !== 'demo' && <span style={{ fontSize: 10, color: '#3b82f6', background: '#eff6ff', padding: '2px 6px', borderRadius: 4 }}>{userName || (enmarcado ? 'WLO' : 'standalone')}</span>}
         </div>
       </div>
+      {!enmarcado && wsId === 'demo' && (
+        <div style={{ padding: '14px 24px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, maxWidth: 900 }}>
+            <span style={{ fontSize: 18, flexShrink: 0 }}>📋</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#1e40af', marginBottom: 4 }}>Instalar en WLO</div>
+              <div style={{ fontSize: 12, color: '#1e40af', lineHeight: 1.6 }}>
+                Esta aplicacion esta lista para instalarse como herramienta externa en WLO. Copia estos datos en el formulario <strong>Publicar herramienta</strong> del Marketplace:
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 10 }}>
+                {[
+                  { label: 'URL base', value: typeof window !== 'undefined' ? window.location.origin : '' },
+                  { label: 'Ruta embed', value: '/embed' },
+                  { label: 'Tipo', value: 'Pantalla (embed)' },
+                  { label: 'Permisos', value: 'Ninguno requerido' },
+                ].map((item, i) => (
+                  <div key={i} style={{ background: '#fff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '8px 12px' }}>
+                    <div style={{ fontSize: 10, color: '#64748b', marginBottom: 2 }}>{item.label}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <code style={{ fontSize: 12, color: '#1e40af', fontFamily: 'monospace' }}>{item.value}</code>
+                      {(item.label === 'URL base' || item.label === 'Ruta embed') && (
+                        <button onClick={() => { navigator.clipboard.writeText(item.value) }} style={{ padding: '2px 6px', fontSize: 10, border: '1px solid #bfdbfe', borderRadius: 4, background: '#fff', cursor: 'pointer', color: '#64748b' }}>Copiar</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {loading ? <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>Cargando...</div> :
         flows.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 80 }}>
