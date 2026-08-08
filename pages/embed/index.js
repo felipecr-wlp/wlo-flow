@@ -80,7 +80,10 @@ export default function FlowApp() {
   const doLoadFlows = useCallback(async () => {
     try {
       const r = await fetch(api(wsId, ''))
-      if (r.ok) setFlows(await r.json())
+      if (r.ok) {
+        const data = await r.json()
+        setFlows(Array.isArray(data) ? data : [])
+      }
     } catch { }
     setLoading(false)
   }, [wsId])
@@ -193,7 +196,7 @@ function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, 
               <button onClick={onCreate} disabled={creating} style={{ ...s.btnPrimary, opacity: creating ? 0.5 : 1 }}><Plus size={14} /> {creating ? 'Creando...' : 'Nuevo flujo'}</button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-              {flows.map(f => (
+              {(flows || []).map(f => (
                 <div key={f.id} onClick={() => onOpen(f.id)} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 20, cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <div style={{ flex: 1 }}>

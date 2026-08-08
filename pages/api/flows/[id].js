@@ -1,9 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = () => createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-)
+function getSupabase() {
+  const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim()
+  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
+  return createClient(url, key)
+}
 
 export default async function handler(req, res) {
   const origin = req.headers.origin
@@ -21,8 +22,10 @@ export default async function handler(req, res) {
   const { id } = req.query
   if (!id) return res.status(400).json({ error: 'id required' })
 
+  const supabase = getSupabase()
+
   if (req.method === 'GET') {
-    const { data, error } = await supabase()
+    const { data, error } = await supabase
       .from('flows')
       .select('*')
       .eq('id', id)
@@ -41,13 +44,13 @@ export default async function handler(req, res) {
     if (req.body.shares !== undefined) patch.shares = req.body.shares
     patch.updated_at = new Date().toISOString()
 
-    const { error } = await supabase().from('flows').update(patch).eq('id', id)
+    const { error } = await supabase.from('flows').update(patch).eq('id', id)
     if (error) return res.status(500).json({ error: error.message })
     return res.json({ ok: true })
   }
 
   if (req.method === 'DELETE') {
-    const { error } = await supabase().from('flows').delete().eq('id', id)
+    const { error } = await supabase.from('flows').delete().eq('id', id)
     if (error) return res.status(500).json({ error: error.message })
     return res.json({ ok: true })
   }
