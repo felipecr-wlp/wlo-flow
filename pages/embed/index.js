@@ -94,12 +94,12 @@ export default function FlowApp() {
   }, [view])
 
   async function createFlow() {
-    setCreating(true)
+    setCreating(true); setError(null)
     try {
       const r = await fetch(api(wsId, ''), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Nuevo flujo' }) })
       if (r.ok) { const f = await r.json(); setCreating(false); openFlow(f.id) }
-      else setCreating(false)
-    } catch { setCreating(false) }
+      else { const e = await r.json().catch(() => ({})); setError('Error al crear: ' + (e.error || r.status)); setCreating(false) }
+    } catch (err) { setError('Error de red: ' + err.message); setCreating(false) }
   }
 
   async function deleteFlow(id) {
@@ -116,7 +116,7 @@ export default function FlowApp() {
       <Head><title>Flows - WLO</title></Head>
       {view === 'list' ? (
         <ListView
-          flows={flows} loading={loading} creating={creating} wsId={wsId}
+          flows={flows} loading={loading} creating={creating} wsId={wsId} error={error}
           enmarcado={enmarcado} userName={userName}
           onCreate={createFlow} onDelete={deleteFlow} onOpen={openFlow}
         />
@@ -131,7 +131,7 @@ export default function FlowApp() {
   )
 }
 
-function ListView({ flows, loading, creating, wsId, enmarcado, userName, onCreate, onDelete, onOpen }) {
+function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, onCreate, onDelete, onOpen }) {
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -171,6 +171,11 @@ function ListView({ flows, loading, creating, wsId, enmarcado, userName, onCreat
               </div>
             </div>
           </div>
+        </div>
+      )}
+      {error && (
+        <div style={{ margin: '12px 24px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, fontSize: 12, color: '#dc2626' }}>
+          {error}
         </div>
       )}
       {loading ? <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>Cargando...</div> :
