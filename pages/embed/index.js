@@ -9,7 +9,7 @@ import {
   Save, Trash2, Type, Code, Link as LinkIcon, FileText, Pencil,
   Square, Circle, Minus, Grid3X3, ChevronDown, ChevronUp, Copy, Undo2, Redo2,
   Lock, Unlock, ArrowUp, ArrowDown, Maximize, Download, Upload, Eye, Edit3,
-  X, HelpCircle, Share2, Plus, PenTool, Layout,
+  X, HelpCircle, Share2, Plus, PenTool, Layout, Hand,
 } from 'lucide-react'
 
 const CONTENT_TYPES = ['text', 'html', 'url', 'document']
