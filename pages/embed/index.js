@@ -10,7 +10,7 @@ import {
   Square, Circle, Minus, Grid3X3, ChevronDown, ChevronUp, Copy, Undo2, Redo2,
   Lock, Unlock, ArrowUp, ArrowDown, Maximize, Download, Upload, Eye, Edit3,
   X, HelpCircle, Share2, Plus, PenTool, Layout, Hand, Search, Check,
-  AlertTriangle, RefreshCw,
+  AlertTriangle, RefreshCw, Plug, Send, UserPlus, List as ListIcon,
 } from 'lucide-react'
 
 const CONTENT_TYPES = ['text', 'html', 'url', 'document']
@@ -18,6 +18,40 @@ const SHAPES = ['rect', 'circle', 'line', 'grid', 'text']
 const SN = { rect: 'Rect', circle: 'Circ', line: 'Linea', grid: 'Grid', text: 'Texto' }
 const NI = { text: <Type size={14} />, html: <Code size={14} />, url: <LinkIcon size={14} />, document: <FileText size={14} /> }
 const SI = { rect: <Square size={14} />, circle: <Circle size={14} />, line: <Minus size={14} />, grid: <Grid3X3 size={14} />, text: <Type size={14} /> }
+
+/**
+ * Acciones de comunicacion con terceros que este editor puede dibujar.
+ *
+ * Cada entrada corresponde a una accion del contrato de conectores del ecosistema
+ * (las mismas que usa el motor de automatizaciones de WLO). Este editor NO ejecuta
+ * la accion: dibuja la intencion con su configuracion. Cuando el flujo corra en el
+ * motor, el nodo llama a la app remota con estos datos.
+ */
+const CONNECTOR_ACTIONS = [
+  {
+    app: 'wli', action: 'emailer/create_campaign', label: 'Crear campaña', icon: <Send size={14} />,
+    fields: [
+      { key: 'title', label: 'Nombre de la campaña' },
+      { key: 'subject', label: 'Asunto del correo' },
+      { key: 'html', label: 'HTML de la campaña' },
+      { key: 'list_id', label: 'ID de la base (lista)' },
+    ],
+  },
+  {
+    app: 'wli', action: 'emailer/enroll_contact', label: 'Enrolar contacto', icon: <UserPlus size={14} />,
+    fields: [
+      { key: 'sequence_id', label: 'ID de secuencia' },
+      { key: 'email', label: 'Email o {email_tarea}' },
+    ],
+  },
+  {
+    app: 'wli', action: 'emailer/list_sequences', label: 'Listar secuencias', icon: <ListIcon size={14} />,
+    fields: [
+      { key: 'solo_activas', label: 'Solo activas', type: 'check' },
+    ],
+  },
+]
+const CONNECTOR_APPS = [...new Set(CONNECTOR_ACTIONS.map(a => a.app))]
 
 function fmtDate(iso) {
   if (!iso) return ''
@@ -108,6 +142,33 @@ function ShapeNode({ data, selected }) {
     {s === 'text' && <svg width={w} height={h}><text x={w / 2} y={h / 2} textAnchor="middle" dominantBaseline="central" fill={stroke} fontSize={14} fontWeight={500} fontFamily="system-ui, sans-serif" style={{ pointerEvents: 'none' }}>{label || 'Texto'}</text></svg>}
     {!['circle', 'line', 'grid', 'text'].includes(s) && <svg width={w} height={h}><rect x={0} y={0} width={w} height={h} fill={fill} stroke={stroke} strokeWidth={2} rx={6} />{L}</svg>}
   </div>
+}
+
+function ConnectorNode({ data, selected }) {
+  const def = CONNECTOR_ACTIONS.find(a => a.app === data?.app && a.action === data?.action)
+  const cfg = (data?.config && typeof data.config === 'object') ? data.config : {}
+  const label = data?.label || def?.label || 'Acción de terceros'
+  const borderColor = selected ? '#3b82f6' : '#8b5cf6'
+  const fields = def?.fields || []
+  return (
+    <div className="bg-white border-2 rounded-lg px-3 py-2 shadow-sm min-w-[200px] max-w-[280px]" style={{ borderColor, opacity: data?.locked ? 0.7 : 1, ...(selected ? { boxShadow: '0 0 0 2px rgba(139,92,246,.35)' } : {}) }}>
+      <Handle type="target" position={Position.Top} className="!bg-gray-400" />
+      <div className="flex items-center gap-2">
+        <span className="text-violet-500">{def?.icon || <Plug size={14} />}</span>
+        <span className="text-xs font-semibold truncate flex-1">{label}</span>
+        {data?.locked && <Lock size={12} className="text-amber-500" />}
+      </div>
+      <div className="text-[10px] text-gray-400 truncate mt-0.5">{(data?.app || '').toUpperCase()} · {data?.action || ''}</div>
+      {fields.filter(f => cfg[f.key] !== undefined && cfg[f.key] !== null && String(cfg[f.key]).trim() !== '').length > 0 && (
+        <div className="mt-1.5 space-y-0.5">
+          {fields.filter(f => cfg[f.key] !== undefined && cfg[f.key] !== null && String(cfg[f.key]).trim() !== '').map(f => (
+            <div key={f.key} className="text-[10px] text-gray-500 truncate"><span className="text-gray-400">{f.label}:</span> {String(cfg[f.key])}</div>
+          ))}
+        </div>
+      )}
+      <Handle type="source" position={Position.Bottom} className="!bg-gray-400" />
+    </div>
+  )
 }
 
 const FLOWS_KEY = 'wlo_flows_index'
@@ -351,6 +412,9 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
   const [nodeTags, setNodeTags] = useState(''); const [nodeLink, setNodeLink] = useState(''); const [nodeOwner, setNodeOwner] = useState('')
   const [nodeFields, setNodeFields] = useState([])
   const [nodeType, setNodeType] = useState('text'); const [previewHtml, setPreviewHtml] = useState(false)
+  const [editingConnectorId, setEditingConnectorId] = useState(null)
+  const [connApp, setConnApp] = useState('wli'); const [connAction, setConnAction] = useState('emailer/create_campaign')
+  const [connLabel, setConnLabel] = useState(''); const [connConfig, setConnConfig] = useState({})
   const [editingShapeId, setEditingShapeId] = useState(null)
   const [shapeW, setShapeW] = useState(160); const [shapeH, setShapeH] = useState(120)
   const [shapeLabel, setShapeLabel] = useState(''); const [shapeFill, setShapeFill] = useState('#f1f5f9')
@@ -449,10 +513,14 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
   }, [onNodesChange])
   const onKeyDown = useCallback((e) => { if (e.altKey && e.key === 'm') { setAltHeld(h => !h); e.preventDefault(); return } if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return; if (e.key === 'Delete') deleteSelected(); else if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo() } else if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo() } else if (e.ctrlKey && e.key === 'c') { e.preventDefault(); copySelected() } else if (e.ctrlKey && e.key === 'v') { e.preventDefault(); pasteSelected() } }, [nodes, edges])
   const onDragOver = useCallback(e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }, [])
-  const onDrop = useCallback(e => { e.preventDefault(); const type = e.dataTransfer.getData('application/reactflow'); if (!type) return; const bounds = reactFlowInstance.current?.screenToFlowPosition?.({ x: e.clientX, y: e.clientY }) || { x: e.clientX - 250, y: e.clientY - 100 }; pushHistory(nodes, edges); if (type.startsWith('shape:')) { const shape = type.split(':')[1]; const dims = shape === 'line' ? { w: 200, h: 40 } : shape === 'grid' ? { w: 240, h: 200 } : shape === 'text' ? { w: 160, h: 50 } : { w: 160, h: 120 }; setNodes(nds => [...nds, { id: `shape-${Date.now()}`, type: 'shape', position: bounds, data: { shape, width: dims.w, height: dims.h, fill: '#f1f5f9', stroke: '#64748b', label: shape === 'text' ? 'Texto' : '', cols: 3, rows: 3 } }]) } else { setNodes(nds => [...nds, { id: `node-${Date.now()}`, type: 'custom', position: bounds, data: { label: 'Nuevo nodo', content: { contentType: type, content: '' } } }]) } }, [nodes, edges])
+  const onDrop = useCallback(e => { e.preventDefault(); const type = e.dataTransfer.getData('application/reactflow'); if (!type) return; const bounds = reactFlowInstance.current?.screenToFlowPosition?.({ x: e.clientX, y: e.clientY }) || { x: e.clientX - 250, y: e.clientY - 100 }; pushHistory(nodes, edges); if (type.startsWith('shape:')) { const shape = type.split(':')[1]; const dims = shape === 'line' ? { w: 200, h: 40 } : shape === 'grid' ? { w: 240, h: 200 } : shape === 'text' ? { w: 160, h: 50 } : { w: 160, h: 120 }; setNodes(nds => [...nds, { id: `shape-${Date.now()}`, type: 'shape', position: bounds, data: { shape, width: dims.w, height: dims.h, fill: '#f1f5f9', stroke: '#64748b', label: shape === 'text' ? 'Texto' : '', cols: 3, rows: 3 } }]) } else if (type.startsWith('connector:')) { const [, app, action] = type.split(':'); const def = CONNECTOR_ACTIONS.find(a => a.app === app && a.action === action); const cfg = {}; (def?.fields || []).forEach(f => { if (f.type === 'check') cfg[f.key] = false }); setNodes(nds => [...nds, { id: `connector-${Date.now()}`, type: 'connector', position: bounds, data: { app, action, label: def?.label || action, config: cfg } }]) } else { setNodes(nds => [...nds, { id: `node-${Date.now()}`, type: 'custom', position: bounds, data: { label: 'Nuevo nodo', content: { contentType: type, content: '' } } }]) } }, [nodes, edges])
 
-  function handleNodeDoubleClick(e, node) { const d = node.data || {}; if (d.locked) return; if (d.shape) { setEditingShapeId(node.id); setShapeW(d.width || 160); setShapeH(d.height || 120); setShapeLabel(d.label || ''); setShapeFill(d.fill || '#f1f5f9'); setShapeStroke(d.stroke || '#64748b'); setShapeType(d.shape) } else { setEditingNodeId(node.id); setNodeLabel(d.label || ''); setNodeSubtitle(d.subtitle || ''); setNodeColor(d.color || '#3b82f6'); setNodeTags(Array.isArray(d.tags) ? d.tags.join(', ') : (d.tags || '')); setNodeLink(d.link || ''); setNodeOwner(d.owner || ''); setNodeFields(Array.isArray(d.fields) ? d.fields.map(f => ({ key: f.key || '', value: f.value || '' })) : []); setNodeType(d.content?.contentType || 'text'); setNodeContent(d.content?.content || ''); setPreviewHtml(false) } }
+  function handleNodeDoubleClick(e, node) { const d = node.data || {}; if (d.locked) return; if (d.app && d.action) { openConnectorEdit(node); return } if (d.shape) { setEditingShapeId(node.id); setShapeW(d.width || 160); setShapeH(d.height || 120); setShapeLabel(d.label || ''); setShapeFill(d.fill || '#f1f5f9'); setShapeStroke(d.stroke || '#64748b'); setShapeType(d.shape) } else { setEditingNodeId(node.id); setNodeLabel(d.label || ''); setNodeSubtitle(d.subtitle || ''); setNodeColor(d.color || '#3b82f6'); setNodeTags(Array.isArray(d.tags) ? d.tags.join(', ') : (d.tags || '')); setNodeLink(d.link || ''); setNodeOwner(d.owner || ''); setNodeFields(Array.isArray(d.fields) ? d.fields.map(f => ({ key: f.key || '', value: f.value || '' })) : []); setNodeType(d.content?.contentType || 'text'); setNodeContent(d.content?.content || ''); setPreviewHtml(false) } }
   function saveNode() { if (!editingNodeId) return; const tags = nodeTags.split(',').map(t => t.trim()).filter(Boolean); const fields = nodeFields.filter(f => (f.key || '').trim() || (f.value || '').trim()).map(f => ({ key: (f.key || '').trim(), value: (f.value || '').trim() })); setNodes(nds => nds.map(n => n.id === editingNodeId ? { ...n, data: { ...n.data, label: nodeLabel, subtitle: nodeSubtitle, color: nodeColor, tags, link: nodeLink, owner: nodeOwner, fields, content: { contentType: nodeType, content: nodeContent } } } : n)); setEditingNodeId(null); autoSave() }
+  function openConnectorEdit(node) { const d = node.data || {}; setEditingConnectorId(node.id); setConnApp(d.app || 'wli'); setConnAction(d.action || CONNECTOR_ACTIONS[0].action); setConnLabel(d.label || ''); setConnConfig((d.config && typeof d.config === 'object') ? { ...d.config } : {}) }
+  function saveConnector() { if (!editingConnectorId) return; setNodes(nds => nds.map(n => n.id === editingConnectorId ? { ...n, data: { ...n.data, app: connApp, action: connAction, label: connLabel, config: connConfig } } : n)); setEditingConnectorId(null); autoSave() }
+  function cambiarAccionConector(action) { setConnAction(action); const def = CONNECTOR_ACTIONS.find(a => a.app === connApp && a.action === action); const cfg = {}; (def?.fields || []).forEach(f => { if (f.type === 'check') cfg[f.key] = false }); setConnConfig(cfg) }
+  function setConnCfg(key, val) { setConnConfig(cfg => ({ ...cfg, [key]: val })) }
   function saveShape() { if (!editingShapeId) return; setNodes(nds => nds.map(n => n.id === editingShapeId ? { ...n, data: { ...n.data, shape: shapeType, width: shapeW, height: shapeH, label: shapeLabel, fill: shapeFill, stroke: shapeStroke } } : n)); setEditingShapeId(null); autoSave() }
   function saveEdge() { if (!editingEdgeId) return; setEdges(eds => eds.map(e => e.id === editingEdgeId ? { ...e, label: edgeLabel || undefined, style: { ...e.style, stroke: edgeColor, strokeWidth: edgeWidth }, type: edgeType === 'default' ? undefined : edgeType, markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor } } : e)); setEditingEdgeId(null); autoSave() }
   function toggleLock(nodeId) { setNodes(nds => nds.map(n => n.id === nodeId ? { ...n, data: { ...n.data, locked: !n.data?.locked } } : n)); autoSave(); setCtxMenu(null) }
@@ -525,7 +593,7 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
           onConnect={onConnect} onNodesDelete={(del) => { const ids = new Set(del.filter(n => !n.data?.locked).map(n => n.id)); setEdges(eds => eds.filter(e => !ids.has(e.source) && !ids.has(e.target))) }}
           onNodeDoubleClick={handleNodeDoubleClick} onNodeContextMenu={handleNodeContextMenu} onEdgeContextMenu={handleEdgeContextMenu}
           onPaneClick={() => { setCtxMenu(null); setCtxEdgeMenu(null) }} onDragOver={onDragOver} onDrop={onDrop}
-          onInit={(rf) => { reactFlowInstance.current = rf }} nodeTypes={{ custom: CustomNode, shape: ShapeNode }}
+          onInit={(rf) => { reactFlowInstance.current = rf }} nodeTypes={{ custom: CustomNode, shape: ShapeNode, connector: ConnectorNode }}
           minZoom={0.1} maxZoom={4} panOnDrag={altHeld} panActivationKeyCode="Alt"
           selectionKeyCode="Control" multiSelectionKeyCode="Control" deleteKeyCode={null} fitView className="bg-gray-50">
           <Controls /><Background variant={BackgroundVariant.Dots} gap={20} size={1} /><MiniMap />
@@ -552,6 +620,8 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
             {CONTENT_TYPES.map(t => <button key={t} draggable onDragStart={e => { e.dataTransfer.setData('application/reactflow', t); e.dataTransfer.effectAllowed = 'move' }} className="flex items-center gap-1.5 rounded px-1.5 py-1 text-xs hover:bg-gray-100 cursor-grab">{NI[t]} {t === 'text' ? 'Texto' : t === 'html' ? 'HTML' : t === 'url' ? 'URL' : 'Doc'}</button>)}
             <hr className="my-0.5" /><span className="text-[10px] font-medium text-gray-400 px-1">Dibujo</span>
             {SHAPES.map(s => <button key={s} draggable onDragStart={e => { e.dataTransfer.setData('application/reactflow', `shape:${s}`); e.dataTransfer.effectAllowed = 'move' }} className="flex items-center gap-1.5 rounded px-1.5 py-1 text-xs hover:bg-gray-100 cursor-grab">{SI[s]} {SN[s]}</button>)}
+            <hr className="my-0.5" /><span className="text-[10px] font-medium text-gray-400 px-1">Conectores</span>
+            {CONNECTOR_ACTIONS.map(a => <button key={a.action} draggable onDragStart={e => { e.dataTransfer.setData('application/reactflow', `connector:${a.app}:${a.action}`); e.dataTransfer.effectAllowed = 'move' }} className="flex items-center gap-1.5 rounded px-1.5 py-1 text-xs hover:bg-gray-100 cursor-grab">{a.icon} {a.label}<span className="text-gray-400">· {a.app.toUpperCase()}</span></button>)}
           </div>}
         </div>
       </div>
@@ -594,6 +664,57 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
           <div className="flex gap-1">{SHAPES.map(t => <button key={t} onClick={() => setShapeType(t)} className={`flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium ${shapeType === t ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>{SI[t]}{SN[t]}</button>)}</div>
         </div>
         <div className="flex justify-end gap-2 mt-4"><button onClick={() => setEditingShapeId(null)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button><button onClick={saveShape} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"><Save size={14} />Guardar</button></div>
+      </Modal>}
+      {editingConnectorId && <Modal onClose={() => setEditingConnectorId(null)} title="Acción de comunicación">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Conexión</label>
+              <select value={connApp} onChange={e => { const app = e.target.value; setConnApp(app); const first = CONNECTOR_ACTIONS.find(a => a.app === app); if (first) cambiarAccionConector(first.action) }} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200">
+                {CONNECTOR_APPS.map(a => <option key={a} value={a}>{a.toUpperCase()}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Acción</label>
+              <select value={connAction} onChange={e => cambiarAccionConector(e.target.value)} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200">
+                {CONNECTOR_ACTIONS.filter(a => a.app === connApp).map(a => <option key={a.action} value={a.action}>{a.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1 block">Nombre del nodo</label>
+            <input value={connLabel} onChange={e => setConnLabel(e.target.value)} placeholder={CONNECTOR_ACTIONS.find(a => a.action === connAction)?.label || 'Acción'} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" />
+          </div>
+          {(() => { const def = CONNECTOR_ACTIONS.find(a => a.app === connApp && a.action === connAction); if (!def) return null; return (
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Configuración</label>
+              <div className="space-y-2">
+                {def.fields.map(f => f.type === 'check' ? (
+                  <label key={f.key} className="flex items-center gap-2 text-sm text-gray-600">
+                    <input type="checkbox" checked={!!connConfig[f.key]} onChange={e => setConnCfg(f.key, e.target.checked)} className="w-4 h-4" />
+                    {f.label}
+                  </label>
+                ) : (
+                  <div key={f.key}>
+                    <label className="text-[11px] text-gray-400 block mb-0.5">{f.label}</label>
+                    <textarea
+                      value={connConfig[f.key] !== undefined && connConfig[f.key] !== null ? String(connConfig[f.key]) : ''}
+                      onChange={e => setConnCfg(f.key, e.target.value)}
+                      placeholder={f.key === 'html' ? '<p>Hola {nombre}, …</p>' : f.key === 'email' ? '{email_tarea} o correo fijo' : ''}
+                      rows={f.key === 'html' ? 5 : 1}
+                      className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 font-mono resize-y"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) })()}
+          <p className="text-[11px] leading-relaxed text-gray-400">
+            Este editor dibuja la intención: el nodo se guarda con su configuración.
+            Cuando el flujo corra (motor de WLO), esta acción llama a {connApp.toUpperCase()} con esos datos y devuelve el resultado al flujo.
+          </p>
+        </div>
+        <div className="flex justify-end gap-2 mt-4"><button onClick={() => setEditingConnectorId(null)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button><button onClick={saveConnector} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"><Save size={14} />Guardar</button></div>
       </Modal>}
       {editingEdgeId && <Modal onClose={() => setEditingEdgeId(null)} title="Propiedades de linea">
         <div className="space-y-4">
