@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react'
 import Head from 'next/head'
 import {
   ReactFlow, Controls, Background, MiniMap, useNodesState, useEdgesState,
@@ -9,7 +9,8 @@ import {
   Save, Trash2, Type, Code, Link as LinkIcon, FileText, Pencil,
   Square, Circle, Minus, Grid3X3, ChevronDown, ChevronUp, Copy, Undo2, Redo2,
   Lock, Unlock, ArrowUp, ArrowDown, Maximize, Download, Upload, Eye, Edit3,
-  X, HelpCircle, Share2, Plus, PenTool, Layout, Hand,
+  X, HelpCircle, Share2, Plus, PenTool, Layout, Hand, Search, Check,
+  AlertTriangle, RefreshCw,
 } from 'lucide-react'
 
 const CONTENT_TYPES = ['text', 'html', 'url', 'document']
@@ -18,16 +19,77 @@ const SN = { rect: 'Rect', circle: 'Circ', line: 'Linea', grid: 'Grid', text: 'T
 const NI = { text: <Type size={14} />, html: <Code size={14} />, url: <LinkIcon size={14} />, document: <FileText size={14} /> }
 const SI = { rect: <Square size={14} />, circle: <Circle size={14} />, line: <Minus size={14} />, grid: <Grid3X3 size={14} />, text: <Type size={14} /> }
 
+function fmtDate(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const now = Date.now()
+  const diff = now - d.getTime()
+  if (diff < 0) return 'ahora'
+  if (diff < 60000) return 'ahora mismo'
+  if (diff < 3600000) return `${Math.round(diff / 60000)}m`
+  if (diff < 86400000) return `${Math.round(diff / 3600000)}h`
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const day = new Date(d); day.setHours(0, 0, 0, 0)
+  const days = Math.round((today - day) / 86400000)
+  if (days === 0) return 'hoy'
+  if (days === 1) return 'ayer'
+  if (days < 7) return `hace ${days} días`
+  return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+}
+
 function CustomNode({ data, selected }) {
   const ct = data?.content?.contentType || 'text'
+  const color = data?.color || ''
+  const tags = Array.isArray(data?.tags) ? data.tags.filter(Boolean) : []
+  const fields = Array.isArray(data?.fields) ? data.fields : []
+  const { updateField, addField, removeField } = useContext(FlowContext) || {}
+  const borderColor = selected ? '#3b82f6' : color || '#e2e8f0'
   return (
-    <div className={`bg-white border-2 rounded-lg px-4 py-3 shadow-sm min-w-[180px] ${selected ? 'border-blue-500 ring-2 ring-blue-300' : data?.locked ? 'border-gray-200 opacity-70' : 'border-gray-200'}`}>
+    <div className="bg-white border-2 rounded-lg px-3 py-2 shadow-sm min-w-[200px] max-w-[280px]" style={{ borderColor, opacity: data?.locked ? 0.7 : 1, ...(selected ? { boxShadow: '0 0 0 2px rgba(59,130,246,.35)' } : {}) }}>
       <Handle type="target" position={Position.Top} className="!bg-gray-400" />
       <div className="flex items-center gap-2">
         <span className="text-blue-500">{NI[ct]}</span>
         <span className="text-xs font-semibold truncate flex-1">{data?.label || 'Nodo'}</span>
         {data?.locked && <Lock size={12} className="text-amber-500" />}
       </div>
+      {data?.subtitle && <div className="text-[10px] text-gray-400 truncate mt-0.5">{data.subtitle}</div>}
+      <div className="mt-1.5 space-y-1">
+        {fields.map((f, i) => (
+          <div key={i} className="flex items-center gap-1">
+            <input
+              className="nodrag w-[38%] min-w-0 h-6 rounded border border-gray-200 bg-gray-50 px-1.5 text-[10px] outline-none focus:border-blue-400"
+              value={f.key || ''} placeholder="campo"
+              onChange={e => updateField?.(id, i, 'key', e.target.value)}
+              onPointerDown={e => e.stopPropagation()} />
+            <input
+              className="nodrag flex-1 min-w-0 h-6 rounded border border-gray-200 bg-gray-50 px-1.5 text-[10px] outline-none focus:border-blue-400"
+              value={f.value || ''} placeholder="valor"
+              onChange={e => updateField?.(id, i, 'value', e.target.value)}
+              onPointerDown={e => e.stopPropagation()} />
+            {selected && (
+              <button title="Quitar campo" className="nodrag shrink-0 text-gray-300 hover:text-red-500" onClick={() => removeField?.(id, i)} onPointerDown={e => e.stopPropagation()}><X size={10} /></button>
+            )}
+          </div>
+        ))}
+        <button className="nodrag flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-600" onClick={() => addField?.(id)} onPointerDown={e => e.stopPropagation()}><Plus size={10} />Agregar campo</button>
+      </div>
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {tags.map(t => <span key={t} className="text-[9px] bg-blue-50 text-blue-600 rounded-full px-1.5 py-0.5 truncate max-w-[110px]">{t}</span>)}
+        </div>
+      )}
+      {data?.owner && (
+        <div className="flex items-center gap-1 mt-1.5 text-[10px] text-gray-500 min-w-0">
+          <span className="w-4 h-4 rounded-full bg-gray-200 flex items-center justify-center text-[8px] font-bold text-gray-600 shrink-0">{(data.owner || '?')[0].toUpperCase()}</span>
+          <span className="truncate">{data.owner}</span>
+        </div>
+      )}
+      {data?.link && (
+        <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-400 min-w-0">
+          <LinkIcon size={10} className="shrink-0" />
+          <a href={data.link} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="truncate hover:text-blue-600 hover:underline">{data.link}</a>
+        </div>
+      )}
       <Handle type="source" position={Position.Bottom} className="!bg-gray-400" />
     </div>
   )
@@ -49,6 +111,7 @@ function ShapeNode({ data, selected }) {
 }
 
 const FLOWS_KEY = 'wlo_flows_index'
+const FlowContext = createContext(null)
 
 // API helpers
 function api(wsId, path) { return `/api/flows${path || ''}?workspace_id=${encodeURIComponent(wsId)}` }
@@ -67,6 +130,7 @@ export default function FlowApp() {
   const [userName, setUserName] = useState('')
   const [userRole, setUserRole] = useState('')
   const [membersList, setMembersList] = useState([])
+  const flowParam = useRef(null)
 
   useEffect(() => {
     const p = new URLSearchParams(window.location.search)
@@ -74,6 +138,7 @@ export default function FlowApp() {
     setInstId(p.get('install_id') || '')
     setUserName(p.get('user_name') || '')
     setUserRole(p.get('user_role') || '')
+    flowParam.current = p.get('flow') || null
     try { const m = p.get('members'); if (m) setMembersList(JSON.parse(m)) } catch { }
   }, [])
 
@@ -89,6 +154,14 @@ export default function FlowApp() {
   }, [wsId])
 
   useEffect(() => { doLoadFlows() }, [doLoadFlows])
+
+  useEffect(() => {
+    if (!loading && flowParam.current) {
+      const id = flowParam.current
+      flowParam.current = null
+      openFlow(id)
+    }
+  }, [loading])
 
   useEffect(() => {
     if (!enmarcado) return
@@ -111,6 +184,13 @@ export default function FlowApp() {
     doLoadFlows()
   }
 
+  async function renameFlow(id, title) {
+    const t = (title || '').trim()
+    if (!t) return
+    const r = await fetch(api(wsId, `/${id}`), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: t }) })
+    if (r.ok) doLoadFlows()
+  }
+
   function openFlow(id) { setFlowId(id); setView('editor') }
   function backToList() { setFlowId(null); setView('list'); doLoadFlows() }
 
@@ -121,7 +201,7 @@ export default function FlowApp() {
         <ListView
           flows={flows} loading={loading} creating={creating} wsId={wsId} error={error}
           enmarcado={enmarcado} userName={userName}
-          onCreate={createFlow} onDelete={deleteFlow} onOpen={openFlow}
+          onCreate={createFlow} onDelete={deleteFlow} onOpen={openFlow} onRename={renameFlow}
         />
       ) : (
         <EditorView
@@ -134,14 +214,28 @@ export default function FlowApp() {
   )
 }
 
-function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, onCreate, onDelete, onOpen }) {
+function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, onCreate, onDelete, onOpen, onRename }) {
+  const [q, setQ] = useState('')
+  const [renamingId, setRenamingId] = useState(null)
+  const [renameValue, setRenameValue] = useState('')
+
+  const filtered = (flows || []).filter(f => !q.trim() || (f.title || '').toLowerCase().includes(q.trim().toLowerCase()))
+
+  function startRename(f) {
+    setRenamingId(f.id)
+    setRenameValue(f.title || '')
+  }
+  function commitRename() {
+    if (renamingId) { onRename(renamingId, renameValue); setRenamingId(null) }
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Layout size={20} style={{ color: '#3b82f6' }} />
           <h1 style={{ fontSize: 18, fontWeight: 700, color: '#1e293b' }}>Flows</h1>
-          <span style={{ fontSize: 11, color: '#94a3b8', background: '#f1f5f9', padding: '2px 8px', borderRadius: 99 }}>{flows.length}</span>
+          <span style={{ fontSize: 11, color: '#94a3b8', background: '#f1f5f9', padding: '2px 8px', borderRadius: 99 }}>{filtered.length}</span>
           {wsId !== 'demo' && <span style={{ fontSize: 10, color: '#3b82f6', background: '#eff6ff', padding: '2px 6px', borderRadius: 4 }}>{userName || (enmarcado ? 'WLO' : 'standalone')}</span>}
         </div>
       </div>
@@ -182,7 +276,7 @@ function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, 
         </div>
       )}
       {loading ? <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>Cargando...</div> :
-        flows.length === 0 ? (
+        (flows || []).length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 80 }}>
             <PenTool size={48} style={{ color: '#cbd5e1', marginBottom: 16 }} />
             <h2 style={{ fontSize: 16, fontWeight: 600, color: '#64748b', marginBottom: 8 }}>No hay flujos</h2>
@@ -191,23 +285,47 @@ function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, 
           </div>
         ) : (
           <div style={{ padding: 24, maxWidth: 1000, margin: '0 auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>{flows.length} flujo(s)</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ position: 'relative', flex: 1, maxWidth: 320 }}>
+                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar flujo..." style={{ width: '100%', height: 34, border: '1px solid #e2e8f0', borderRadius: 8, padding: '0 10px 0 32px', fontSize: 13, outline: 'none', background: '#fff' }} />
+              </div>
               <button onClick={onCreate} disabled={creating} style={{ ...s.btnPrimary, opacity: creating ? 0.5 : 1 }}><Plus size={14} /> {creating ? 'Creando...' : 'Nuevo flujo'}</button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-              {(flows || []).map(f => (
-                <div key={f.id} onClick={() => onOpen(f.id)} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 20, cursor: 'pointer' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b', marginBottom: 4 }}>{f.title || 'Sin titulo'}</div>
-                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{(f.nodes || []).length} nodos · {(f.edges || []).length} conexiones</div>
+            {filtered.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8', fontSize: 13 }}>
+                No hay flujos que coincidan con "{q}"
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+                {filtered.map(f => (
+                  <div key={f.id} onClick={() => onOpen(f.id)} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 20, cursor: 'pointer', transition: 'box-shadow .15s', boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {renamingId === f.id ? (
+                          <input
+                            autoFocus value={renameValue}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => setRenameValue(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenamingId(null) }}
+                            onBlur={commitRename}
+                            style={{ width: '100%', fontSize: 14, fontWeight: 600, border: '1px solid #3b82f6', borderRadius: 6, padding: '4px 8px', outline: 'none' }}
+                          />
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || 'Sin titulo'}</div>
+                            <button title="Renombrar" onClick={e => { e.stopPropagation(); startRename(f) }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#cbd5e1', padding: 2 }}><Pencil size={12} /></button>
+                          </div>
+                        )}
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{(f.nodes || []).length} nodos · {(f.edges || []).length} conexiones</div>
+                        {f.updated_at && <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 4 }}>Editado {fmtDate(f.updated_at)}</div>}
+                      </div>
+                      <button title="Eliminar" onClick={e => { e.stopPropagation(); onDelete(f.id) }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4 }}><Trash2 size={14} /></button>
                     </div>
-                    <button onClick={e => { e.stopPropagation(); onDelete(f.id) }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4 }}><Trash2 size={14} /></button>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
     </div>
@@ -229,6 +347,9 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
   const [shares, setShares] = useState([])
   const [editingNodeId, setEditingNodeId] = useState(null)
   const [nodeLabel, setNodeLabel] = useState(''); const [nodeContent, setNodeContent] = useState('')
+  const [nodeSubtitle, setNodeSubtitle] = useState(''); const [nodeColor, setNodeColor] = useState('#3b82f6')
+  const [nodeTags, setNodeTags] = useState(''); const [nodeLink, setNodeLink] = useState(''); const [nodeOwner, setNodeOwner] = useState('')
+  const [nodeFields, setNodeFields] = useState([])
   const [nodeType, setNodeType] = useState('text'); const [previewHtml, setPreviewHtml] = useState(false)
   const [editingShapeId, setEditingShapeId] = useState(null)
   const [shapeW, setShapeW] = useState(160); const [shapeH, setShapeH] = useState(120)
@@ -238,45 +359,100 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
   const [edgeLabel, setEdgeLabel] = useState(''); const [edgeColor, setEdgeColor] = useState('#64748b')
   const [edgeWidth, setEdgeWidth] = useState(2); const [edgeType, setEdgeType] = useState('default')
   const [ctxMenu, setCtxMenu] = useState(null); const [ctxEdgeMenu, setCtxEdgeMenu] = useState(null)
+  const [saveState, setSaveState] = useState('saved')
+  const [toast, setToast] = useState(null)
+  const [loadError, setLoadError] = useState(false)
   const reactFlowInstance = useRef(null)
   const history = useRef([]); const historyIdx = useRef(-1); const clipboard = useRef([])
-  const saveTimer = useRef(null)
+  const saveTimer = useRef(null); const toastTimer = useRef(null)
+  const nodesRef = useRef([])
+  const saveStateRef = useRef(saveState)
+
+  useEffect(() => { saveStateRef.current = saveState }, [saveState])
+  useEffect(() => { nodesRef.current = nodes }, [nodes])
+
+  function showToast(msg, type = 'success') {
+    setToast({ msg, type })
+    clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 3000)
+  }
 
   useEffect(() => {
     if (!flowId) return
-    fetch(api(wsId, `/${flowId}`)).then(r => r.json()).then(f => {
-      if (f && f.id) {
+    fetch(api(wsId, `/${flowId}`)).then(async r => {
+      const f = await r.json().catch(() => null)
+      if (r.ok && f && f.id) {
         setTitle(f.title || '')
         setDescription(f.description || '')
         setNodes(f.nodes || [])
         setEdges(f.edges || [])
         setShares(f.shares || [])
+        setLoadError(false)
+      } else {
+        setLoadError(true)
       }
       setLoaded(true)
-    }).catch(() => setLoaded(true))
+    }).catch(() => { setLoadError(true); setLoaded(true) })
   }, [flowId, wsId])
 
   function save(n, e) {
     setSaving(true)
+    setSaveState('saving')
     const body = { title, description, nodes: n || nodes, edges: e || edges, shares }
     fetch(api(wsId, `/${flowId}`), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); setSaveState('saved'); showToast('Cambios guardados') })
+      .catch(() => { setSaveState('error'); showToast('Error al guardar. Revisa tu conexión.', 'error') })
       .finally(() => setSaving(false))
   }
-  function autoSave(n, e) { if (saveTimer.current) clearTimeout(saveTimer.current); saveTimer.current = setTimeout(() => save(n, e), 800) }
+  function autoSave(n, e) { setSaveState('dirty'); if (saveTimer.current) clearTimeout(saveTimer.current); saveTimer.current = setTimeout(() => save(n, e), 800) }
+
+  useEffect(() => {
+    const onBefore = (e) => {
+      if (saveStateRef.current === 'dirty' || saveStateRef.current === 'saving') {
+        e.preventDefault(); e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', onBefore)
+    return () => window.removeEventListener('beforeunload', onBefore)
+  }, [])
+
+  const flowCtx = {
+    updateField: (id, idx, field, val) => {
+      setNodes(nds => nds.map(n => {
+        if (n.id !== id) return n
+        const fields = Array.isArray(n.data?.fields) ? n.data.fields.map(f => ({ ...f })) : []
+        while (fields.length <= idx) fields.push({ key: '', value: '' })
+        if (field === 'key') fields[idx].key = val; else fields[idx].value = val
+        return { ...n, data: { ...n.data, fields } }
+      }))
+      autoSave()
+    },
+    addField: (id) => {
+      setNodes(nds => nds.map(n => n.id === id ? { ...n, data: { ...n.data, fields: [...(Array.isArray(n.data?.fields) ? n.data.fields : []), { key: '', value: '' }] } } : n))
+      autoSave()
+    },
+    removeField: (id, idx) => {
+      setNodes(nds => nds.map(n => n.id === id ? { ...n, data: { ...n.data, fields: (Array.isArray(n.data?.fields) ? n.data.fields : []).filter((_, j) => j !== idx) } } : n))
+      autoSave()
+    },
+  }
 
   function pushHistory(n, e) { const h = history.current; h.length = historyIdx.current + 1; h.push({ nodes: JSON.parse(JSON.stringify(n)), edges: JSON.parse(JSON.stringify(e)) }); if (h.length > 50) h.shift(); else historyIdx.current++ }
-  function undo() { if (historyIdx.current <= 0) return; historyIdx.current--; const s = history.current[historyIdx.current]; setNodes(s.nodes); setEdges(s.edges) }
-  function redo() { if (historyIdx.current >= history.current.length - 1) return; historyIdx.current++; const s = history.current[historyIdx.current]; setNodes(s.nodes); setEdges(s.edges) }
-  function copySelected() { const sel = nodes.filter(n => n.selected); clipboard.current = sel.map(n => ({ ...n, id: `node-${Date.now()}` })) }
-  function pasteSelected() { if (!clipboard.current.length) return; const pasted = clipboard.current.map(n => ({ ...n, id: `node-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, position: { x: n.position.x + 40, y: n.position.y + 40 } })); setNodes(nds => [...nds, ...pasted]) }
+  function undo() { if (historyIdx.current <= 0) return; historyIdx.current--; const s = history.current[historyIdx.current]; setNodes(s.nodes); setEdges(s.edges); autoSave(s.nodes, s.edges) }
+  function redo() { if (historyIdx.current >= history.current.length - 1) return; historyIdx.current++; const s = history.current[historyIdx.current]; setNodes(s.nodes); setEdges(s.edges); autoSave(s.nodes, s.edges) }
+  function copySelected() { const sel = nodes.filter(n => n.selected); clipboard.current = sel.map(n => ({ ...n, id: `node-${Date.now()}` })); if (sel.length) showToast(`${sel.length} copiado(s)`) }
+  function pasteSelected() { if (!clipboard.current.length) return; pushHistory(nodes, edges); const pasted = clipboard.current.map(n => ({ ...n, id: `node-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, position: { x: n.position.x + 40, y: n.position.y + 40 } })); setNodes(nds => [...nds, ...pasted]); autoSave() }
   const onConnect = useCallback((conn) => { pushHistory(nodes, edges); setEdges(eds => addEdge({ ...conn, style: { stroke: '#64748b', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#64748b' } }, eds)) }, [nodes, edges, setEdges])
-  function deleteSelected() { const sel = nodes.filter(n => n.selected); if (!sel.length) return; pushHistory(nodes, edges); const rest = nodes.filter(n => !n.selected); const ids = new Set(sel.map(n => n.id)); setTimeout(() => { setNodes(rest); setEdges(eds => eds.filter(e => !ids.has(e.source) && !ids.has(e.target))) }, 0) }
+  function deleteSelected() { const sel = nodes.filter(n => n.selected && !n.data?.locked); if (!sel.length) return; pushHistory(nodes, edges); const ids = new Set(sel.map(n => n.id)); const rest = nodes.filter(n => !ids.has(n.id)); setTimeout(() => { setNodes(rest); setEdges(eds => eds.filter(e => !ids.has(e.source) && !ids.has(e.target))) }, 0) }
+  const onNodesChangeSafe = useCallback((changes) => {
+    onNodesChange(changes.filter(c => c.type !== 'position' || !nodesRef.current.find(n => n.id === c.id)?.data?.locked))
+  }, [onNodesChange])
   const onKeyDown = useCallback((e) => { if (e.altKey && e.key === 'm') { setAltHeld(h => !h); e.preventDefault(); return } if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return; if (e.key === 'Delete') deleteSelected(); else if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo() } else if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo() } else if (e.ctrlKey && e.key === 'c') { e.preventDefault(); copySelected() } else if (e.ctrlKey && e.key === 'v') { e.preventDefault(); pasteSelected() } }, [nodes, edges])
   const onDragOver = useCallback(e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }, [])
   const onDrop = useCallback(e => { e.preventDefault(); const type = e.dataTransfer.getData('application/reactflow'); if (!type) return; const bounds = reactFlowInstance.current?.screenToFlowPosition?.({ x: e.clientX, y: e.clientY }) || { x: e.clientX - 250, y: e.clientY - 100 }; pushHistory(nodes, edges); if (type.startsWith('shape:')) { const shape = type.split(':')[1]; const dims = shape === 'line' ? { w: 200, h: 40 } : shape === 'grid' ? { w: 240, h: 200 } : shape === 'text' ? { w: 160, h: 50 } : { w: 160, h: 120 }; setNodes(nds => [...nds, { id: `shape-${Date.now()}`, type: 'shape', position: bounds, data: { shape, width: dims.w, height: dims.h, fill: '#f1f5f9', stroke: '#64748b', label: shape === 'text' ? 'Texto' : '', cols: 3, rows: 3 } }]) } else { setNodes(nds => [...nds, { id: `node-${Date.now()}`, type: 'custom', position: bounds, data: { label: 'Nuevo nodo', content: { contentType: type, content: '' } } }]) } }, [nodes, edges])
 
-  function handleNodeDoubleClick(e, node) { const d = node.data || {}; if (d.shape) { setEditingShapeId(node.id); setShapeW(d.width || 160); setShapeH(d.height || 120); setShapeLabel(d.label || ''); setShapeFill(d.fill || '#f1f5f9'); setShapeStroke(d.stroke || '#64748b'); setShapeType(d.shape) } else { setEditingNodeId(node.id); setNodeLabel(d.label || ''); setNodeType(d.content?.contentType || 'text'); setNodeContent(d.content?.content || ''); setPreviewHtml(false) } }
-  function saveNode() { if (!editingNodeId) return; setNodes(nds => nds.map(n => n.id === editingNodeId ? { ...n, data: { ...n.data, label: nodeLabel, content: { contentType: nodeType, content: nodeContent } } } : n)); setEditingNodeId(null); autoSave() }
+  function handleNodeDoubleClick(e, node) { const d = node.data || {}; if (d.locked) return; if (d.shape) { setEditingShapeId(node.id); setShapeW(d.width || 160); setShapeH(d.height || 120); setShapeLabel(d.label || ''); setShapeFill(d.fill || '#f1f5f9'); setShapeStroke(d.stroke || '#64748b'); setShapeType(d.shape) } else { setEditingNodeId(node.id); setNodeLabel(d.label || ''); setNodeSubtitle(d.subtitle || ''); setNodeColor(d.color || '#3b82f6'); setNodeTags(Array.isArray(d.tags) ? d.tags.join(', ') : (d.tags || '')); setNodeLink(d.link || ''); setNodeOwner(d.owner || ''); setNodeFields(Array.isArray(d.fields) ? d.fields.map(f => ({ key: f.key || '', value: f.value || '' })) : []); setNodeType(d.content?.contentType || 'text'); setNodeContent(d.content?.content || ''); setPreviewHtml(false) } }
+  function saveNode() { if (!editingNodeId) return; const tags = nodeTags.split(',').map(t => t.trim()).filter(Boolean); const fields = nodeFields.filter(f => (f.key || '').trim() || (f.value || '').trim()).map(f => ({ key: (f.key || '').trim(), value: (f.value || '').trim() })); setNodes(nds => nds.map(n => n.id === editingNodeId ? { ...n, data: { ...n.data, label: nodeLabel, subtitle: nodeSubtitle, color: nodeColor, tags, link: nodeLink, owner: nodeOwner, fields, content: { contentType: nodeType, content: nodeContent } } } : n)); setEditingNodeId(null); autoSave() }
   function saveShape() { if (!editingShapeId) return; setNodes(nds => nds.map(n => n.id === editingShapeId ? { ...n, data: { ...n.data, shape: shapeType, width: shapeW, height: shapeH, label: shapeLabel, fill: shapeFill, stroke: shapeStroke } } : n)); setEditingShapeId(null); autoSave() }
   function saveEdge() { if (!editingEdgeId) return; setEdges(eds => eds.map(e => e.id === editingEdgeId ? { ...e, label: edgeLabel || undefined, style: { ...e.style, stroke: edgeColor, strokeWidth: edgeWidth }, type: edgeType === 'default' ? undefined : edgeType, markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor } } : e)); setEditingEdgeId(null); autoSave() }
   function toggleLock(nodeId) { setNodes(nds => nds.map(n => n.id === nodeId ? { ...n, data: { ...n.data, locked: !n.data?.locked } } : n)); autoSave(); setCtxMenu(null) }
@@ -287,7 +463,7 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
   function handleEdgeContextMenu(e, edge) { e.preventDefault(); setCtxMenu(null); setCtxEdgeMenu({ x: e.clientX, y: e.clientY, edgeId: edge.id }) }
   function handleEdgeClick() { const edge = edges.find(e => e.id === ctxEdgeMenu?.edgeId); if (edge) { setEditingEdgeId(edge.id); setEdgeLabel(edge.label || ''); setEdgeColor(edge.style?.stroke || '#64748b'); setEdgeWidth(edge.style?.strokeWidth || 2); setEdgeType(edge.type || 'default'); setCtxEdgeMenu(null) } }
   const handleExport = () => { const data = { title, description, nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }; const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${title || 'flujo'}.wlo.json`; a.click(); URL.revokeObjectURL(url) }
-  const handleImport = () => { const el = document.createElement('input'); el.type = 'file'; el.accept = '.json'; el.onchange = async (ev) => { const file = ev.target.files?.[0]; if (!file) return; try { const text = await file.text(); const data = JSON.parse(text); if (data.nodes) { setNodes(data.nodes); setEdges(data.edges || []); if (data.title) setTitle(data.title); if (data.description !== undefined) setDescription(data.description); autoSave(data.nodes, data.edges || []) } } catch { } }; el.click() }
+  const handleImport = () => { const el = document.createElement('input'); el.type = 'file'; el.accept = '.json'; el.onchange = async (ev) => { const file = ev.target.files?.[0]; if (!file) return; try { const text = await file.text(); const data = JSON.parse(text); if (data.nodes) { pushHistory(nodes, edges); setNodes(data.nodes); setEdges(data.edges || []); if (data.title) setTitle(data.title); if (data.description !== undefined) setDescription(data.description); autoSave(data.nodes, data.edges || []); showToast('Flujo importado') } } catch { showToast('Archivo inválido', 'error') } }; el.click() }
 
   function toggleShare(profileId) {
     const already = shares.find(s => s.profile_id === profileId)
@@ -298,14 +474,29 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
 
   const selCount = nodes.filter(n => n.selected).length
 
+  const saveLabel = saveState === 'saving' ? 'Guardando...' : saveState === 'dirty' ? 'Sin guardar' : saveState === 'error' ? 'Error al guardar' : 'Guardado'
+  const saveColor = saveState === 'error' ? '#dc2626' : saveState === 'dirty' ? '#d97706' : saveState === 'saving' ? '#64748b' : '#16a34a'
+
   if (!loaded) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#f8fafc', color: '#94a3b8' }}>Cargando...</div>
+  if (loadError) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#f8fafc', color: '#64748b', gap: 12, padding: 24, textAlign: 'center' }}>
+      <AlertTriangle size={40} style={{ color: '#f59e0b' }} />
+      <div style={{ fontSize: 15, fontWeight: 600 }}>No se pudo cargar el flujo</div>
+      <div style={{ fontSize: 12, color: '#94a3b8' }}>Puede que haya sido eliminado o que la conexión falle.</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={onBack} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 text-sm">← Volver</button>
+        <button onClick={() => window.location.reload()} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 text-sm"><RefreshCw size={14} />Reintentar</button>
+      </div>
+    </div>
+  )
 
   return (
+    <FlowContext.Provider value={flowCtx}>
     <div className="flex flex-col h-screen" tabIndex={0} onKeyDown={onKeyDown} onClick={() => { setCtxMenu(null); setCtxEdgeMenu(null) }}>
       <header className="flex items-center gap-3 px-4 py-2 border-b bg-white shrink-0">
         {!enmarcado && <button onClick={onBack} className="text-gray-500 hover:text-gray-700 text-sm">← Volver</button>}
         <input value={title} onChange={e => { setTitle(e.target.value); autoSave() }} className="h-8 max-w-xs font-semibold border-0 bg-transparent outline-none text-lg flex-1" placeholder="Titulo del flujo" />
-        <span className="text-xs text-gray-400">{saving ? 'Guardando...' : 'Auto-guardado'}</span>
+        <span className="text-xs" style={{ color: saveColor }}>{saveLabel}</span>
         <button onClick={() => save()} disabled={saving} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Save size={14} />Guardar</button>
         <button onClick={handleExport} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Download size={14} />Exportar</button>
         <button onClick={handleImport} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Upload size={14} />Importar</button>
@@ -330,8 +521,8 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
         </>}
       </div>
       <div className="flex-1 relative">
-        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-          onConnect={onConnect} onNodesDelete={(del) => { const ids = new Set(del.map(n => n.id)); setEdges(eds => eds.filter(e => !ids.has(e.source) && !ids.has(e.target))) }}
+        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChangeSafe} onEdgesChange={onEdgesChange}
+          onConnect={onConnect} onNodesDelete={(del) => { const ids = new Set(del.filter(n => !n.data?.locked).map(n => n.id)); setEdges(eds => eds.filter(e => !ids.has(e.source) && !ids.has(e.target))) }}
           onNodeDoubleClick={handleNodeDoubleClick} onNodeContextMenu={handleNodeContextMenu} onEdgeContextMenu={handleEdgeContextMenu}
           onPaneClick={() => { setCtxMenu(null); setCtxEdgeMenu(null) }} onDragOver={onDragOver} onDrop={onDrop}
           onInit={(rf) => { reactFlowInstance.current = rf }} nodeTypes={{ custom: CustomNode, shape: ShapeNode }}
@@ -345,7 +536,7 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
           <hr className="my-1" /><button className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-100 rounded" onClick={() => bringToFront(ctxMenu.nodeId)}><ArrowUp size={12} />Al frente</button>
           <button className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-100 rounded" onClick={() => sendToBack(ctxMenu.nodeId)}><ArrowDown size={12} />Al fondo</button>
           <hr className="my-1" /><button className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-100 rounded" onClick={() => duplicateNode(ctxMenu.nodeId)}><Copy size={12} />Duplicar</button>
-          <button className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-100 rounded text-red-600" onClick={() => { setNodes(nds => nds.filter(n => n.id !== ctxMenu.nodeId)); setEdges(eds => eds.filter(e => e.source !== ctxMenu.nodeId && e.target !== ctxMenu.nodeId)); setCtxMenu(null); autoSave() }}><Trash2 size={12} />Eliminar</button>
+          <button className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-100 rounded text-red-600" onClick={() => { if (nodes.find(n => n.id === ctxMenu.nodeId)?.data?.locked) { setCtxMenu(null); return } setNodes(nds => nds.filter(n => n.id !== ctxMenu.nodeId)); setEdges(eds => eds.filter(e => e.source !== ctxMenu.nodeId && e.target !== ctxMenu.nodeId)); setCtxMenu(null); autoSave() }}><Trash2 size={12} />Eliminar</button>
         </div>}
         {ctxEdgeMenu && <div className="fixed z-50 bg-white border rounded-lg shadow-xl p-1 min-w-[160px]" style={{ left: ctxEdgeMenu.x, top: ctxEdgeMenu.y }} onClick={e => e.stopPropagation()}>
           <button className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-100 rounded" onClick={handleEdgeClick}><Pencil size={12} />Propiedades</button>
@@ -371,6 +562,24 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
       {editingNodeId && <Modal onClose={() => setEditingNodeId(null)} title="Editar nodo">
         <div className="space-y-4">
           <div><label className="text-xs font-medium text-gray-500 mb-1 block">Nombre</label><input value={nodeLabel} onChange={e => setNodeLabel(e.target.value)} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" /></div>
+          <div><label className="text-xs font-medium text-gray-500 mb-1 block">Subtitulo</label><input value={nodeSubtitle} onChange={e => setNodeSubtitle(e.target.value)} placeholder="Texto secundario del nodo" className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" /></div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1 block">Campos personalizados</label>
+            <div className="space-y-2">
+              {nodeFields.map((f, i) => (
+                <div key={i} className="flex gap-2">
+                  <input value={f.key} onChange={e => setNodeFields(fs => fs.map((x, j) => j === i ? { ...x, key: e.target.value } : x))} placeholder="Campo" className="w-1/3 h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={f.value} onChange={e => setNodeFields(fs => fs.map((x, j) => j === i ? { ...x, value: e.target.value } : x))} placeholder="Valor" className="flex-1 h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200" />
+                  <button title="Quitar campo" onClick={() => setNodeFields(fs => fs.filter((_, j) => j !== i))} className="w-8 h-8 rounded-md border hover:bg-gray-50 text-gray-400 flex items-center justify-center shrink-0"><X size={12} /></button>
+                </div>
+              ))}
+              <button onClick={() => setNodeFields(fs => [...fs, { key: '', value: '' }])} className="w-full flex items-center justify-center gap-1.5 h-8 rounded-md border border-dashed hover:bg-gray-50 text-xs text-gray-500"><Plus size={12} />Agregar campo</button>
+            </div>
+          </div>
+          <div><label className="text-xs font-medium text-gray-500 mb-1 block">Color del nodo</label><div className="flex gap-2"><input type="color" value={nodeColor || '#3b82f6'} onChange={e => setNodeColor(e.target.value)} className="w-9 h-9 rounded border cursor-pointer" /><input value={nodeColor} onChange={e => setNodeColor(e.target.value)} placeholder="#3b82f6" className="flex-1 h-9 rounded-md border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-blue-200" />{nodeColor && <button title="Quitar color" onClick={() => setNodeColor('')} className="w-9 h-9 rounded-md border hover:bg-gray-50 text-gray-400 flex items-center justify-center"><X size={14} /></button>}</div></div>
+          <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tags</label><input value={nodeTags} onChange={e => setNodeTags(e.target.value)} placeholder="tag1, tag2, tag3" className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" />{nodeTags.trim() && <div className="flex flex-wrap gap-1 mt-1.5">{nodeTags.split(',').map(t => t.trim()).filter(Boolean).map(t => <span key={t} className="text-[10px] bg-blue-50 text-blue-600 rounded-full px-2 py-0.5">{t}</span>)}</div>}</div>
+          <div><label className="text-xs font-medium text-gray-500 mb-1 block">Responsable</label><input value={nodeOwner} onChange={e => setNodeOwner(e.target.value)} placeholder="Persona asignada" className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" /></div>
+          <div><label className="text-xs font-medium text-gray-500 mb-1 block">Enlace de referencia</label><input value={nodeLink} onChange={e => setNodeLink(e.target.value)} placeholder="https://..." className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" /></div>
           <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tipo</label><div className="flex gap-1">{CONTENT_TYPES.map(t => <button key={t} onClick={() => { setNodeType(t); setPreviewHtml(false) }} className={`flex-1 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${nodeType === t ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>{NI[t]} {t}</button>)}</div></div>
           <div><div className="flex items-center justify-between mb-1"><label className="text-xs font-medium text-gray-500">{nodeType === 'url' ? 'URL' : 'Contenido'}</label>{nodeType === 'html' && <button onClick={() => setPreviewHtml(!previewHtml)} className={`flex items-center gap-1 text-xs rounded px-2 py-0.5 ${previewHtml ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>{previewHtml ? <Edit3 size={12} /> : <Eye size={12} />}{previewHtml ? 'Codigo' : 'Preview'}</button>}</div>
           {nodeType === 'html' && previewHtml ? <iframe key="preview" srcDoc={nodeContent} className="w-full min-h-[200px] rounded-md border bg-white" sandbox="allow-scripts" style={{ border: 0 }} /> : <textarea value={nodeContent} onChange={e => setNodeContent(e.target.value)} className="w-full min-h-[200px] rounded-md border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-blue-200 resize-y" />}</div>
@@ -427,7 +636,14 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
           )}
         </div>
       </Modal>}
+      {toast && (
+        <div className="fixed bottom-4 right-4 z-[60] flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm text-white shadow-lg" style={{ background: toast.type === 'error' ? '#dc2626' : '#16a34a' }}>
+          {toast.type === 'error' ? <AlertTriangle size={14} /> : <Check size={14} />}
+          {toast.msg}
+        </div>
+      )}
     </div>
+    </FlowContext.Provider>
   )
 }
 
