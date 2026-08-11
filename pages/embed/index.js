@@ -10,7 +10,7 @@ import {
   Square, Circle, Minus, Grid3X3, ChevronDown, ChevronUp, Copy, Undo2, Redo2,
   Lock, Unlock, ArrowUp, ArrowDown, Maximize, Download, Upload, Eye, Edit3,
   X, HelpCircle, Share2, Plus, PenTool, Layout, Hand, Search, Check,
-  AlertTriangle, RefreshCw, Plug, Send, UserPlus, List as ListIcon,
+  AlertTriangle, RefreshCw, Plug, Send, UserPlus, List as ListIcon, Play,
 } from 'lucide-react'
 
 const CONTENT_TYPES = ['text', 'html', 'url', 'document']
@@ -35,6 +35,7 @@ const CONNECTOR_ACTIONS = [
       { key: 'subject', label: 'Asunto del correo' },
       { key: 'html', label: 'HTML de la campaña' },
       { key: 'list_id', label: 'ID de la base (lista)' },
+      { key: 'send', label: 'Enviar de inmediato (si no, queda en borrador)', type: 'check' },
     ],
   },
   {
@@ -426,6 +427,8 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
   const [saveState, setSaveState] = useState('saved')
   const [toast, setToast] = useState(null)
   const [loadError, setLoadError] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const [publishResult, setPublishResult] = useState(null)
   const reactFlowInstance = useRef(null)
   const history = useRef([]); const historyIdx = useRef(-1); const clipboard = useRef([])
   const saveTimer = useRef(null); const toastTimer = useRef(null)
@@ -533,6 +536,27 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
   const handleExport = () => { const data = { title, description, nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }; const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${title || 'flujo'}.wlo.json`; a.click(); URL.revokeObjectURL(url) }
   const handleImport = () => { const el = document.createElement('input'); el.type = 'file'; el.accept = '.json'; el.onchange = async (ev) => { const file = ev.target.files?.[0]; if (!file) return; try { const text = await file.text(); const data = JSON.parse(text); if (data.nodes) { pushHistory(nodes, edges); setNodes(data.nodes); setEdges(data.edges || []); if (data.title) setTitle(data.title); if (data.description !== undefined) setDescription(data.description); autoSave(data.nodes, data.edges || []); showToast('Flujo importado') } } catch { showToast('Archivo inválido', 'error') } }; el.click() }
 
+  async function publishFlow() {
+    const connNodes = nodes.filter(n => n.type === 'connector')
+    if (!connNodes.length) { showToast('No hay acciones de conectores en este flujo', 'error'); return }
+    const nodesOut = connNodes.map(n => ({ id: n.id, label: n.data?.label || '', app: n.data?.app || '', action: n.data?.action || '', config: n.data?.config || {} }))
+    const campanas = nodesOut.filter(n => n.action === 'emailer/create_campaign')
+    const faltantes = campanas.filter(n => !String(n.config?.html || '').trim() || !String(n.config?.list_id || '').trim())
+    if (faltantes.length) { showToast('Faltan HTML o base en un nodo de campaña', 'error'); return }
+    setPublishing(true)
+    try {
+      const r = await fetch('/api/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workspace_id: wsId, flow_id: flowId, title, connector_nodes: nodesOut }) })
+      const body = await r.json().catch(() => ({ results: [] }))
+      setPublishResult(body.results || [])
+      if ((body.results || []).length && body.results.every(x => x.ok)) showToast('Campaña publicada')
+      else if ((body.results || []).length) showToast('Hubo errores al publicar', 'error')
+    } catch (e) {
+      showToast('Error de red al publicar', 'error')
+    } finally {
+      setPublishing(false)
+    }
+  }
+
   function toggleShare(profileId) {
     const already = shares.find(s => s.profile_id === profileId)
     const newShares = already ? shares.filter(s => s.profile_id !== profileId) : [...shares, { profile_id: profileId, permission: 'view' }]
@@ -566,6 +590,7 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
         <input value={title} onChange={e => { setTitle(e.target.value); autoSave() }} className="h-8 max-w-xs font-semibold border-0 bg-transparent outline-none text-lg flex-1" placeholder="Titulo del flujo" />
         <span className="text-xs" style={{ color: saveColor }}>{saveLabel}</span>
         <button onClick={() => save()} disabled={saving} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Save size={14} />Guardar</button>
+        <button onClick={publishFlow} disabled={publishing} style={{ ...s.btnPrimary, opacity: publishing ? 0.5 : 1 }}><Play size={14} />{publishing ? 'Publicando...' : 'Publicar'}</button>
         <button onClick={handleExport} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Download size={14} />Exportar</button>
         <button onClick={handleImport} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Upload size={14} />Importar</button>
         <button onClick={() => setShowShare(true)} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Share2 size={14} />Compartir</button>
@@ -710,8 +735,9 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
             </div>
           ) })()}
           <p className="text-[11px] leading-relaxed text-gray-400">
-            Este editor dibuja la intención: el nodo se guarda con su configuración.
-            Cuando el flujo corra (motor de WLO), esta acción llama a {connApp.toUpperCase()} con esos datos y devuelve el resultado al flujo.
+            Con el botón <strong>Publicar</strong> de arriba, wlo-flow reenvía esta acción a WLO
+            y WLO llama a {connApp.toUpperCase()} con estos datos (el secreto nunca sale del servidor).
+            El resultado de la campaña se muestra en pantalla.
           </p>
         </div>
         <div className="flex justify-end gap-2 mt-4"><button onClick={() => setEditingConnectorId(null)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button><button onClick={saveConnector} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"><Save size={14} />Guardar</button></div>
@@ -723,6 +749,32 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
           <div className="flex gap-1">{['default', 'straight', 'step', 'smoothstep'].map(t => <button key={t} onClick={() => setEdgeType(t)} className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-medium ${edgeType === t ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>{t}</button>)}</div>
         </div>
         <div className="flex justify-end gap-2 mt-4"><button onClick={() => setEditingEdgeId(null)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button><button onClick={saveEdge} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"><Save size={14} />Guardar</button></div>
+      </Modal>}
+      {publishResult && <Modal onClose={() => setPublishResult(null)} title="Resultado de la publicación">
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500">Resultado de enviar las acciones del flujo a WLI vía WLO:</p>
+          {publishResult.length === 0 && <p className="text-xs text-gray-400">Sin resultados.</p>}
+          {publishResult.map((r) => (
+            <div key={r.node_id} className="rounded-lg border p-3" style={{ borderColor: r.ok ? '#bbf7d0' : '#fecaca', background: r.ok ? '#f0fdf4' : '#fef2f2' }}>
+              <div className="flex items-center gap-2 text-sm">
+                {r.ok ? <Check size={14} style={{ color: '#16a34a' }} /> : <AlertTriangle size={14} style={{ color: '#dc2626' }} />}
+                <span className="font-medium flex-1 truncate">{r.label || r.action}</span>
+                <span className="text-[10px] text-gray-400 truncate">{r.action}</span>
+              </div>
+              {r.ok ? (
+                <div className="text-xs text-gray-600 mt-1 space-y-0.5">
+                  <div>Campaña: <code className="font-mono">{r.data?.campaign_id || '-'}</code></div>
+                  <div>Estado: {r.data?.status || '-'} · Envíos: {r.data?.sent_count ?? '-'}</div>
+                  {r.data?.published_at && <div>Publicado: {fmtDate(r.data.published_at)}</div>}
+                  {r.data?.list_name && <div>Base: {r.data.list_name}</div>}
+                </div>
+              ) : (
+                <div className="text-xs text-red-600 mt-1">{r.error} (HTTP {r.status})</div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end mt-4"><button onClick={() => setPublishResult(null)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cerrar</button></div>
       </Modal>}
       {showHelp && <Modal onClose={() => setShowHelp(false)} title="Ayuda">
         <div className="space-y-3 text-xs text-gray-500">
