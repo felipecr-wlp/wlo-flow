@@ -12,12 +12,12 @@
  *   wli/emailer/create_campaign  ->  WLO emailer/send_campaign
  *
  * Variables requeridas en el servidor de wlo-flow:
- *   WLO_CONNECTOR_URL   https://wlo.vercel.app
+ *   WLO_CONNECTOR_URL   https://wlo-plugin.vercel.app (tu WLO)
  *   WLO_CONNECTOR_KEY   key creada en Configuracion -> Conectores con
  *                       target_app 'wlo' y scope emailer:relay_campaign
  */
 const RELAY_MAP = {
-  'emailer/create_campaign': { wloAction: 'emailer/send_campaign', requires: ['html', 'list_id'] },
+  'emailer/create_campaign': { wloAction: 'emailer/send_campaign', requires: ['html'] },
 }
 
 export default async function handler(req, res) {
@@ -75,7 +75,7 @@ export default async function handler(req, res) {
       title: String(config.title || '').trim().slice(0, 160) || (title || 'Campana desde flujo').slice(0, 160),
       subject: String(config.subject || '').trim().slice(0, 300) || undefined,
       html: String(config.html),
-      list_id: String(config.list_id).trim(),
+      ...(String(config.list_id || '').trim() ? { list_id: String(config.list_id).trim() } : {}),
       send: config.send === true,
       task_id: flow_id || undefined,
       task_title: title ? String(title).slice(0, 300) : undefined,

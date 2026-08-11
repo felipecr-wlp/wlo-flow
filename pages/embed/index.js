@@ -34,7 +34,7 @@ const CONNECTOR_ACTIONS = [
       { key: 'title', label: 'Nombre de la campaña' },
       { key: 'subject', label: 'Asunto del correo' },
       { key: 'html', label: 'HTML de la campaña' },
-      { key: 'list_id', label: 'ID de la base (lista)' },
+      { key: 'list_id', label: 'ID de la base (lista) (opcional)' },
       { key: 'send', label: 'Enviar de inmediato (si no, queda en borrador)', type: 'check' },
     ],
   },
@@ -429,6 +429,7 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
   const [loadError, setLoadError] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishResult, setPublishResult] = useState(null)
+  const [publishError, setPublishError] = useState(null)
   const reactFlowInstance = useRef(null)
   const history = useRef([]); const historyIdx = useRef(-1); const clipboard = useRef([])
   const saveTimer = useRef(null); const toastTimer = useRef(null)
@@ -541,15 +542,17 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
     if (!connNodes.length) { showToast('No hay acciones de conectores en este flujo', 'error'); return }
     const nodesOut = connNodes.map(n => ({ id: n.id, label: n.data?.label || '', app: n.data?.app || '', action: n.data?.action || '', config: n.data?.config || {} }))
     const campanas = nodesOut.filter(n => n.action === 'emailer/create_campaign')
-    const faltantes = campanas.filter(n => !String(n.config?.html || '').trim() || !String(n.config?.list_id || '').trim())
-    if (faltantes.length) { showToast('Faltan HTML o base en un nodo de campaña', 'error'); return }
+    const faltantes = campanas.filter(n => !String(n.config?.html || '').trim())
+    if (faltantes.length) { showToast('Falta el HTML de la campaña en un nodo', 'error'); return }
     setPublishing(true)
     try {
       const r = await fetch('/api/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workspace_id: wsId, flow_id: flowId, title, connector_nodes: nodesOut }) })
-      const body = await r.json().catch(() => ({ results: [] }))
-      setPublishResult(body.results || [])
-      if ((body.results || []).length && body.results.every(x => x.ok)) showToast('Campaña publicada')
-      else if ((body.results || []).length) showToast('Hubo errores al publicar', 'error')
+      const body = await r.json().catch(() => null)
+      const arr = body && Array.isArray(body.results) ? body.results : []
+      setPublishResult(arr)
+      setPublishError(!body || typeof body !== 'object' ? `No se pudo publicar (HTTP ${r.status})` : (body.error || null))
+      if (arr.length && arr.every(x => x.ok)) showToast('Campaña publicada')
+      else if (arr.length) showToast('Hubo errores al publicar', 'error')
     } catch (e) {
       showToast('Error de red al publicar', 'error')
     } finally {
@@ -725,7 +728,7 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
                     <textarea
                       value={connConfig[f.key] !== undefined && connConfig[f.key] !== null ? String(connConfig[f.key]) : ''}
                       onChange={e => setConnCfg(f.key, e.target.value)}
-                      placeholder={f.key === 'html' ? '<p>Hola {nombre}, …</p>' : f.key === 'email' ? '{email_tarea} o correo fijo' : ''}
+                      placeholder={f.key === 'html' ? '<p>Hola {nombre}, …</p>' : f.key === 'email' ? '{email_tarea} o correo fijo' : f.key === 'list_id' ? 'Si no lo pones, se elige la base al crear la campaña' : ''}
                       rows={f.key === 'html' ? 5 : 1}
                       className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 font-mono resize-y"
                     />
@@ -750,10 +753,11 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
         </div>
         <div className="flex justify-end gap-2 mt-4"><button onClick={() => setEditingEdgeId(null)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button><button onClick={saveEdge} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"><Save size={14} />Guardar</button></div>
       </Modal>}
-      {publishResult && <Modal onClose={() => setPublishResult(null)} title="Resultado de la publicación">
+      {(publishResult || publishError) && <Modal onClose={() => { setPublishResult(null); setPublishError(null) }} title="Resultado de la publicación">
         <div className="space-y-3">
           <p className="text-xs text-gray-500">Resultado de enviar las acciones del flujo a WLI vía WLO:</p>
-          {publishResult.length === 0 && <p className="text-xs text-gray-400">Sin resultados.</p>}
+          {publishError && <div className="rounded-lg border p-3 text-xs text-red-600" style={{ borderColor: '#fecaca', background: '#fef2f2' }}>{publishError}</div>}
+          {publishResult && publishResult.length === 0 && <p className="text-xs text-gray-400">Sin resultados.</p>}
           {publishResult.map((r) => (
             <div key={r.node_id} className="rounded-lg border p-3" style={{ borderColor: r.ok ? '#bbf7d0' : '#fecaca', background: r.ok ? '#f0fdf4' : '#fef2f2' }}>
               <div className="flex items-center gap-2 text-sm">
