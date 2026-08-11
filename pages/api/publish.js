@@ -93,6 +93,10 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify(payload),
         signal: control.signal,
+        // No seguir redirecciones: si el WLO desplegado todavia tiene el
+        // middleware viejo, responde 307 hacia /login y seguir el redirect
+        // devuelve la pagina de login con 200, que se leeria como exito vacio.
+        redirect: 'manual',
       })
       const cuerpo = await r.json().catch(() => null)
       const data = cuerpo && typeof cuerpo === 'object' && cuerpo.ok ? (cuerpo.data ?? null) : null
@@ -103,7 +107,11 @@ export default async function handler(req, res) {
         ok: r.ok && !!data,
         status: r.status,
         data,
-        error: !r.ok || !data ? (cuerpo?.error || `Fallo la llamada a WLO (${r.status})`) : null,
+        error: !r.ok || !data
+          ? (cuerpo?.error || (r.status >= 300 && r.status < 400
+              ? `WLO redirigio la llamada a otra pagina (${r.status}). El endpoint de conectores de tu WLO esta cerrado o el deploy esta desactualizado.`
+              : `Fallo la llamada a WLO (${r.status})`))
+          : null,
       })
     } catch (e) {
       results.push({
