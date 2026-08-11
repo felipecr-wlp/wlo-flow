@@ -24,15 +24,36 @@ export default async function handler(req, res) {
 
   const supabase = getSupabase()
 
+  const { data: flow, error } = await supabase
+    .from('flows')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) return res.status(500).json({ error: error.message })
+  if (!flow) return res.status(404).json({ error: 'No encontrado' })
+
+  // Quien pide: identidad que manda WLO (user_id o user_name). El dueno se
+  // guardo con esa misma identidad al crear el flujo.
+  const identidad = (req.query.user_id || '').trim() || (req.query.user_name || '').trim()
+
+  // Modo demo abierto para probar. En un workspace real, privado: el dueno
+  // puede todo, un compartido solo ver.
+  const demo = flow.workspace_id === 'demo'
+  const esDueno = demo || (!!identidad && flow.owner === identidad)
+  const esCompartido = demo ||
+    (!!identidad && Array.isArray(flow.shares) && flow.shares.some(s => s && s.profile_id === identidad))
+
+  if (!demo && !esDueno && !esCompartido) {
+    return res.status(403).json({ error: 'No tienes acceso a este flujo' })
+  }
+
   if (req.method === 'GET') {
-    const { data, error } = await supabase
-      .from('flows')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle()
-    if (error) return res.status(500).json({ error: error.message })
-    if (!data) return res.status(404).json({ error: 'No encontrado' })
-    return res.json(data)
+    return res.json(flow)
+  }
+
+  // Editar y borrar son del dueno. Un compartido lee nada mas.
+  if (!esDueno) {
+    return res.status(403).json({ error: 'Solo el dueno puede modificar este flujo' })
   }
 
   if (req.method === 'PATCH') {

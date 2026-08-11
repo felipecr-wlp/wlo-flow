@@ -176,7 +176,11 @@ const FLOWS_KEY = 'wlo_flows_index'
 const FlowContext = createContext(null)
 
 // API helpers
-function api(wsId, path) { return `/api/flows${path || ''}?workspace_id=${encodeURIComponent(wsId)}` }
+function api(wsId, path, identity) {
+  const q = [`workspace_id=${encodeURIComponent(wsId)}`]
+  if (identity) q.push(`user_id=${encodeURIComponent(identity)}`)
+  return `/api/flows${path || ''}?${q.join('&')}`
+}
 
 export default function FlowApp() {
   const [view, setView] = useState('list')
@@ -190,6 +194,7 @@ export default function FlowApp() {
   const [wsId, setWsId] = useState('demo')
   const [instId, setInstId] = useState('')
   const [userName, setUserName] = useState('')
+  const [userId, setUserId] = useState('')
   const [userRole, setUserRole] = useState('')
   const [membersList, setMembersList] = useState([])
   const flowParam = useRef(null)
@@ -199,21 +204,27 @@ export default function FlowApp() {
     setWsId(p.get('workspace_id') || 'demo')
     setInstId(p.get('install_id') || '')
     setUserName(p.get('user_name') || '')
+    setUserId(p.get('user_id') || '')
     setUserRole(p.get('user_role') || '')
     flowParam.current = p.get('flow') || null
     try { const m = p.get('members'); if (m) setMembersList(JSON.parse(m)) } catch { }
   }, [])
 
+  // Identidad efectiva del usuario: el profile_id que manda WLO, y si todavia
+  // no lo manda (deploy viejo), el nombre. Con eso el servidor decide que
+  // flujos son suyos y cuales le comparten.
+  const identity = userId || userName
+
   const doLoadFlows = useCallback(async () => {
     try {
-      const r = await fetch(api(wsId, ''))
+      const r = await fetch(api(wsId, '', identity))
       if (r.ok) {
         const data = await r.json()
         setFlows(Array.isArray(data) ? data : [])
       }
     } catch { }
     setLoading(false)
-  }, [wsId])
+  }, [wsId, identity])
 
   useEffect(() => { doLoadFlows() }, [doLoadFlows])
 
@@ -234,7 +245,7 @@ export default function FlowApp() {
   async function createFlow() {
     setCreating(true); setError(null)
     try {
-      const r = await fetch(api(wsId, ''), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Nuevo flujo' }) })
+      const r = await fetch(api(wsId, '', identity), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Nuevo flujo' }) })
       if (r.ok) { const f = await r.json(); setCreating(false); openFlow(f.id) }
       else { const e = await r.json().catch(() => ({})); setError('Error al crear: ' + (e.error || r.status)); setCreating(false) }
     } catch (err) { setError('Error de red: ' + err.message); setCreating(false) }
@@ -242,14 +253,14 @@ export default function FlowApp() {
 
   async function deleteFlow(id) {
     if (!confirm('Eliminar este flujo?')) return
-    await fetch(api(wsId, `/${id}`), { method: 'DELETE' })
+    await fetch(api(wsId, `/${id}`, identity), { method: 'DELETE' })
     doLoadFlows()
   }
 
   async function renameFlow(id, title) {
     const t = (title || '').trim()
     if (!t) return
-    const r = await fetch(api(wsId, `/${id}`), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: t }) })
+    const r = await fetch(api(wsId, `/${id}`, identity), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: t }) })
     if (r.ok) doLoadFlows()
   }
 
@@ -262,12 +273,12 @@ export default function FlowApp() {
       {view === 'list' ? (
         <ListView
           flows={flows} loading={loading} creating={creating} wsId={wsId} error={error}
-          enmarcado={enmarcado} userName={userName}
+          enmarcado={enmarcado} userName={userName} membersList={membersList} identity={identity}
           onCreate={createFlow} onDelete={deleteFlow} onOpen={openFlow} onRename={renameFlow}
         />
       ) : (
         <EditorView
-          flowId={flowId} wsId={wsId} instId={instId}
+          flowId={flowId} wsId={wsId} instId={instId} identity={identity}
           enmarcado={enmarcado} membersList={membersList}
           onBack={backToList}
         />
@@ -276,7 +287,7 @@ export default function FlowApp() {
   )
 }
 
-function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, onCreate, onDelete, onOpen, onRename }) {
+function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, membersList, identity, onCreate, onDelete, onOpen, onRename }) {
   const [q, setQ] = useState('')
   const [renamingId, setRenamingId] = useState(null)
   const [renameValue, setRenameValue] = useState('')
@@ -360,7 +371,10 @@ function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, 
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-                {filtered.map(f => (
+                {filtered.map(f => {
+                  const esDueno = wsId === 'demo' || f.owner === identity
+                  const ownerName = membersList.find(m => m.id === f.owner)?.name
+                  return (
                   <div key={f.id} onClick={() => onOpen(f.id)} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 20, cursor: 'pointer', transition: 'box-shadow .15s', boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -376,16 +390,23 @@ function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, 
                         ) : (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || 'Sin titulo'}</div>
-                            <button title="Renombrar" onClick={e => { e.stopPropagation(); startRename(f) }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#cbd5e1', padding: 2 }}><Pencil size={12} /></button>
+                            {esDueno && <button title="Renombrar" onClick={e => { e.stopPropagation(); startRename(f) }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#cbd5e1', padding: 2 }}><Pencil size={12} /></button>}
                           </div>
                         )}
                         <div style={{ fontSize: 11, color: '#94a3b8' }}>{(f.nodes || []).length} nodos · {(f.edges || []).length} conexiones</div>
-                        {f.updated_at && <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 4 }}>Editado {fmtDate(f.updated_at)}</div>}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                          {f.updated_at && <span style={{ fontSize: 11, color: '#cbd5e1' }}>Editado {fmtDate(f.updated_at)}</span>}
+                          {f.owner && (
+                            f.owner === identity
+                              ? <span style={{ fontSize: 10, color: '#3b82f6', background: '#eff6ff', padding: '1px 8px', borderRadius: 99 }}>Tuyo</span>
+                              : <span style={{ fontSize: 10, color: '#9333ea', background: '#f5f3ff', padding: '1px 8px', borderRadius: 99 }}>{ownerName || 'Compartido'}</span>
+                          )}
+                        </div>
                       </div>
-                      <button title="Eliminar" onClick={e => { e.stopPropagation(); onDelete(f.id) }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4 }}><Trash2 size={14} /></button>
+                      {esDueno && <button title="Eliminar" onClick={e => { e.stopPropagation(); onDelete(f.id) }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4 }}><Trash2 size={14} /></button>}
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
             )}
           </div>
@@ -394,10 +415,11 @@ function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, 
   )
 }
 
-function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
+function EditorView({ flowId, wsId, instId, identity, enmarcado, membersList, onBack }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [saving, setSaving] = useState(false)
+  const [readOnly, setReadOnly] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [loaded, setLoaded] = useState(false)
@@ -447,7 +469,7 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
 
   useEffect(() => {
     if (!flowId) return
-    fetch(api(wsId, `/${flowId}`)).then(async r => {
+    fetch(api(wsId, `/${flowId}`, identity)).then(async r => {
       const f = await r.json().catch(() => null)
       if (r.ok && f && f.id) {
         setTitle(f.title || '')
@@ -455,19 +477,23 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
         setNodes(f.nodes || [])
         setEdges(f.edges || [])
         setShares(f.shares || [])
+        // Solo lectura cuando el flujo no es del usuario y no estamos en demo:
+        // un compartido lee pero no edita.
+        setReadOnly(wsId !== 'demo' && !!identity && f.owner !== identity)
         setLoadError(false)
       } else {
         setLoadError(true)
       }
       setLoaded(true)
     }).catch(() => { setLoadError(true); setLoaded(true) })
-  }, [flowId, wsId])
+  }, [flowId, wsId, identity])
 
   function save(n, e) {
+    if (readOnly) return
     setSaving(true)
     setSaveState('saving')
     const body = { title, description, nodes: n || nodes, edges: e || edges, shares }
-    fetch(api(wsId, `/${flowId}`), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    fetch(api(wsId, `/${flowId}`, identity), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); setSaveState('saved'); showToast('Cambios guardados') })
       .catch(() => { setSaveState('error'); showToast('Error al guardar. Revisa tu conexión.', 'error') })
       .finally(() => setSaving(false))
@@ -513,11 +539,14 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
   const onConnect = useCallback((conn) => { pushHistory(nodes, edges); setEdges(eds => addEdge({ ...conn, style: { stroke: '#64748b', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#64748b' } }, eds)) }, [nodes, edges, setEdges])
   function deleteSelected() { const sel = nodes.filter(n => n.selected && !n.data?.locked); if (!sel.length) return; pushHistory(nodes, edges); const ids = new Set(sel.map(n => n.id)); const rest = nodes.filter(n => !ids.has(n.id)); setTimeout(() => { setNodes(rest); setEdges(eds => eds.filter(e => !ids.has(e.source) && !ids.has(e.target))) }, 0) }
   const onNodesChangeSafe = useCallback((changes) => {
+    if (readOnly) return
     onNodesChange(changes.filter(c => c.type !== 'position' || !nodesRef.current.find(n => n.id === c.id)?.data?.locked))
-  }, [onNodesChange])
-  const onKeyDown = useCallback((e) => { if (e.altKey && e.key === 'm') { setAltHeld(h => !h); e.preventDefault(); return } if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return; if (e.key === 'Delete') deleteSelected(); else if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo() } else if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo() } else if (e.ctrlKey && e.key === 'c') { e.preventDefault(); copySelected() } else if (e.ctrlKey && e.key === 'v') { e.preventDefault(); pasteSelected() } }, [nodes, edges])
-  const onDragOver = useCallback(e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }, [])
-  const onDrop = useCallback(e => { e.preventDefault(); const type = e.dataTransfer.getData('application/reactflow'); if (!type) return; const bounds = reactFlowInstance.current?.screenToFlowPosition?.({ x: e.clientX, y: e.clientY }) || { x: e.clientX - 250, y: e.clientY - 100 }; pushHistory(nodes, edges); if (type.startsWith('shape:')) { const shape = type.split(':')[1]; const dims = shape === 'line' ? { w: 200, h: 40 } : shape === 'grid' ? { w: 240, h: 200 } : shape === 'text' ? { w: 160, h: 50 } : { w: 160, h: 120 }; setNodes(nds => [...nds, { id: `shape-${Date.now()}`, type: 'shape', position: bounds, data: { shape, width: dims.w, height: dims.h, fill: '#f1f5f9', stroke: '#64748b', label: shape === 'text' ? 'Texto' : '', cols: 3, rows: 3 } }]) } else if (type.startsWith('connector:')) { const [, app, action] = type.split(':'); const def = CONNECTOR_ACTIONS.find(a => a.app === app && a.action === action); const cfg = {}; (def?.fields || []).forEach(f => { if (f.type === 'check') cfg[f.key] = false }); setNodes(nds => [...nds, { id: `connector-${Date.now()}`, type: 'connector', position: bounds, data: { app, action, label: def?.label || action, config: cfg } }]) } else { setNodes(nds => [...nds, { id: `node-${Date.now()}`, type: 'custom', position: bounds, data: { label: 'Nuevo nodo', content: { contentType: type, content: '' } } }]) } }, [nodes, edges])
+  }, [onNodesChange, readOnly])
+  const onKeyDown = useCallback((e) => {
+    if (readOnly) return
+    if (e.altKey && e.key === 'm') { setAltHeld(h => !h); e.preventDefault(); return } if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return; if (e.key === 'Delete') deleteSelected(); else if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo() } else if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo() } else if (e.ctrlKey && e.key === 'c') { e.preventDefault(); copySelected() } else if (e.ctrlKey && e.key === 'v') { e.preventDefault(); pasteSelected() } }, [nodes, edges, readOnly])
+  const onDragOver = useCallback(e => { if (readOnly) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move' }, [readOnly])
+  const onDrop = useCallback(e => { e.preventDefault(); if (readOnly) return; const type = e.dataTransfer.getData('application/reactflow'); if (!type) return; const bounds = reactFlowInstance.current?.screenToFlowPosition?.({ x: e.clientX, y: e.clientY }) || { x: e.clientX - 250, y: e.clientY - 100 }; pushHistory(nodes, edges); if (type.startsWith('shape:')) { const shape = type.split(':')[1]; const dims = shape === 'line' ? { w: 200, h: 40 } : shape === 'grid' ? { w: 240, h: 200 } : shape === 'text' ? { w: 160, h: 50 } : { w: 160, h: 120 }; setNodes(nds => [...nds, { id: `shape-${Date.now()}`, type: 'shape', position: bounds, data: { shape, width: dims.w, height: dims.h, fill: '#f1f5f9', stroke: '#64748b', label: shape === 'text' ? 'Texto' : '', cols: 3, rows: 3 } }]) } else if (type.startsWith('connector:')) { const [, app, action] = type.split(':'); const def = CONNECTOR_ACTIONS.find(a => a.app === app && a.action === action); const cfg = {}; (def?.fields || []).forEach(f => { if (f.type === 'check') cfg[f.key] = false }); setNodes(nds => [...nds, { id: `connector-${Date.now()}`, type: 'connector', position: bounds, data: { app, action, label: def?.label || action, config: cfg } }]) } else { setNodes(nds => [...nds, { id: `node-${Date.now()}`, type: 'custom', position: bounds, data: { label: 'Nuevo nodo', content: { contentType: type, content: '' } } }]) } }, [nodes, edges, readOnly])
 
   function handleNodeDoubleClick(e, node) { const d = node.data || {}; if (d.locked) return; if (d.app && d.action) { openConnectorEdit(node); return } if (d.shape) { setEditingShapeId(node.id); setShapeW(d.width || 160); setShapeH(d.height || 120); setShapeLabel(d.label || ''); setShapeFill(d.fill || '#f1f5f9'); setShapeStroke(d.stroke || '#64748b'); setShapeType(d.shape) } else { setEditingNodeId(node.id); setNodeLabel(d.label || ''); setNodeSubtitle(d.subtitle || ''); setNodeColor(d.color || '#3b82f6'); setNodeTags(Array.isArray(d.tags) ? d.tags.join(', ') : (d.tags || '')); setNodeLink(d.link || ''); setNodeOwner(d.owner || ''); setNodeFields(Array.isArray(d.fields) ? d.fields.map(f => ({ key: f.key || '', value: f.value || '' })) : []); setNodeType(d.content?.contentType || 'text'); setNodeContent(d.content?.content || ''); setPreviewHtml(false) } }
   function saveNode() { if (!editingNodeId) return; const tags = nodeTags.split(',').map(t => t.trim()).filter(Boolean); const fields = nodeFields.filter(f => (f.key || '').trim() || (f.value || '').trim()).map(f => ({ key: (f.key || '').trim(), value: (f.value || '').trim() })); setNodes(nds => nds.map(n => n.id === editingNodeId ? { ...n, data: { ...n.data, label: nodeLabel, subtitle: nodeSubtitle, color: nodeColor, tags, link: nodeLink, owner: nodeOwner, fields, content: { contentType: nodeType, content: nodeContent } } } : n)); setEditingNodeId(null); autoSave() }
@@ -538,6 +567,7 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
   const handleImport = () => { const el = document.createElement('input'); el.type = 'file'; el.accept = '.json'; el.onchange = async (ev) => { const file = ev.target.files?.[0]; if (!file) return; try { const text = await file.text(); const data = JSON.parse(text); if (data.nodes) { pushHistory(nodes, edges); setNodes(data.nodes); setEdges(data.edges || []); if (data.title) setTitle(data.title); if (data.description !== undefined) setDescription(data.description); autoSave(data.nodes, data.edges || []); showToast('Flujo importado') } } catch { showToast('Archivo inválido', 'error') } }; el.click() }
 
   async function publishFlow() {
+    if (readOnly) return
     const connNodes = nodes.filter(n => n.type === 'connector')
     if (!connNodes.length) { showToast('No hay acciones de conectores en este flujo', 'error'); return }
     const nodesOut = connNodes.map(n => ({ id: n.id, label: n.data?.label || '', app: n.data?.app || '', action: n.data?.action || '', config: n.data?.config || {} }))
@@ -561,10 +591,11 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
   }
 
   function toggleShare(profileId) {
+    if (readOnly) return
     const already = shares.find(s => s.profile_id === profileId)
     const newShares = already ? shares.filter(s => s.profile_id !== profileId) : [...shares, { profile_id: profileId, permission: 'view' }]
     setShares(newShares)
-    fetch(api(wsId, `/${flowId}`), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shares: newShares }) })
+    fetch(api(wsId, `/${flowId}`, identity), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shares: newShares }) })
   }
 
   const selCount = nodes.filter(n => n.selected).length
@@ -590,15 +621,22 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
     <div className="flex flex-col h-screen" tabIndex={0} onKeyDown={onKeyDown} onClick={() => { setCtxMenu(null); setCtxEdgeMenu(null) }}>
       <header className="flex items-center gap-3 px-4 py-2 border-b bg-white shrink-0">
         {!enmarcado && <button onClick={onBack} className="text-gray-500 hover:text-gray-700 text-sm">← Volver</button>}
-        <input value={title} onChange={e => { setTitle(e.target.value); autoSave() }} className="h-8 max-w-xs font-semibold border-0 bg-transparent outline-none text-lg flex-1" placeholder="Titulo del flujo" />
-        <span className="text-xs" style={{ color: saveColor }}>{saveLabel}</span>
-        <button onClick={() => save()} disabled={saving} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Save size={14} />Guardar</button>
-        <button onClick={publishFlow} disabled={publishing} style={{ ...s.btnPrimary, opacity: publishing ? 0.5 : 1 }}><Play size={14} />{publishing ? 'Publicando...' : 'Publicar'}</button>
+        {readOnly ? (
+          <span className="h-8 max-w-xs font-semibold text-lg flex-1 truncate">{title || 'Sin titulo'}</span>
+        ) : (
+          <input value={title} onChange={e => { setTitle(e.target.value); autoSave() }} className="h-8 max-w-xs font-semibold border-0 bg-transparent outline-none text-lg flex-1" placeholder="Titulo del flujo" />
+        )}
+        {readOnly && <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Solo lectura</span>}
+        {!readOnly && <>
+          <span className="text-xs" style={{ color: saveColor }}>{saveLabel}</span>
+          <button onClick={() => save()} disabled={saving} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Save size={14} />Guardar</button>
+          <button onClick={publishFlow} disabled={publishing} style={{ ...s.btnPrimary, opacity: publishing ? 0.5 : 1 }}><Play size={14} />{publishing ? 'Publicando...' : 'Publicar'}</button>
+        </>}
         <button onClick={handleExport} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Download size={14} />Exportar</button>
-        <button onClick={handleImport} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Upload size={14} />Importar</button>
-        <button onClick={() => setShowShare(true)} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Share2 size={14} />Compartir</button>
+        {!readOnly && <button onClick={handleImport} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Upload size={14} />Importar</button>}
+        {!readOnly && <button onClick={() => setShowShare(true)} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Share2 size={14} />Compartir</button>}
       </header>
-      <div className="flex items-center gap-1 px-2 py-1 border-b bg-gray-50 shrink-0">
+      {!readOnly && <div className="flex items-center gap-1 px-2 py-1 border-b bg-gray-50 shrink-0">
         <button onClick={() => setTopBarCollapsed(!topBarCollapsed)} className="p-1 hover:bg-gray-200 rounded text-gray-500"><ChevronDown size={14} className={`transition-transform ${topBarCollapsed ? '-rotate-90' : ''}`} /></button>
         {!topBarCollapsed && <>
           <button onClick={undo} className="p-1.5 hover:bg-gray-200 rounded text-gray-500"><Undo2 size={14} /></button>
@@ -615,14 +653,15 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
           <button onClick={() => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen() }} className="p-1.5 hover:bg-gray-200 rounded text-gray-500"><Maximize size={14} /></button>
           <button onClick={() => setShowHelp(true)} className="p-1.5 hover:bg-gray-200 rounded text-gray-500"><HelpCircle size={14} /></button>
         </>}
-      </div>
+      </div>}
       <div className="flex-1 relative">
         <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChangeSafe} onEdgesChange={onEdgesChange}
-          onConnect={onConnect} onNodesDelete={(del) => { const ids = new Set(del.filter(n => !n.data?.locked).map(n => n.id)); setEdges(eds => eds.filter(e => !ids.has(e.source) && !ids.has(e.target))) }}
-          onNodeDoubleClick={handleNodeDoubleClick} onNodeContextMenu={handleNodeContextMenu} onEdgeContextMenu={handleEdgeContextMenu}
+          onConnect={(conn) => { if (!readOnly) onConnect(conn) }} onNodesDelete={(del) => { const ids = new Set(del.filter(n => !n.data?.locked).map(n => n.id)); setEdges(eds => eds.filter(e => !ids.has(e.source) && !ids.has(e.target))) }}
+          onNodeDoubleClick={(e, n) => { if (!readOnly) handleNodeDoubleClick(e, n) }} onNodeContextMenu={(e, n) => { if (!readOnly) handleNodeContextMenu(e, n) }} onEdgeContextMenu={(e, ed) => { if (!readOnly) handleEdgeContextMenu(e, ed) }}
           onPaneClick={() => { setCtxMenu(null); setCtxEdgeMenu(null) }} onDragOver={onDragOver} onDrop={onDrop}
           onInit={(rf) => { reactFlowInstance.current = rf }} nodeTypes={{ custom: CustomNode, shape: ShapeNode, connector: ConnectorNode }}
-          minZoom={0.1} maxZoom={4} panOnDrag={altHeld} panActivationKeyCode="Alt"
+          minZoom={0.1} maxZoom={4} panOnDrag={readOnly || altHeld} panActivationKeyCode="Alt"
+          nodesDraggable={!readOnly} nodesConnectable={!readOnly}
           selectionKeyCode="Control" multiSelectionKeyCode="Control" deleteKeyCode={null} fitView className="bg-gray-50">
           <Controls /><Background variant={BackgroundVariant.Dots} gap={20} size={1} /><MiniMap />
           {selCount > 1 && <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg pointer-events-none">{selCount} seleccionados</div>}
@@ -638,7 +677,7 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
           <button className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-100 rounded" onClick={handleEdgeClick}><Pencil size={12} />Propiedades</button>
           <hr className="my-1" /><button className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-100 rounded text-red-600" onClick={() => { setEdges(eds => eds.filter(e => e.id !== ctxEdgeMenu.edgeId)); setCtxEdgeMenu(null); autoSave() }}><Trash2 size={12} />Eliminar</button>
         </div>}
-        <div className="absolute top-3 left-3 bg-white border rounded-lg shadow-lg z-20" style={{ width: toolCollapsed ? 40 : 180 }}>
+        {!readOnly && <div className="absolute top-3 left-3 bg-white border rounded-lg shadow-lg z-20" style={{ width: toolCollapsed ? 40 : 180 }}>
           <div className="flex items-center justify-between px-2 py-1.5 border-b">
             <span className="text-[10px] font-medium text-gray-400">{toolCollapsed ? '' : 'Herramientas'}</span>
             <button onClick={() => setToolCollapsed(!toolCollapsed)} className="p-0.5 hover:bg-gray-100 rounded"><ChevronUp size={12} className={`transition-transform ${toolCollapsed ? 'rotate-180' : ''}`} /></button>
@@ -651,10 +690,14 @@ function EditorView({ flowId, wsId, instId, enmarcado, membersList, onBack }) {
             <hr className="my-0.5" /><span className="text-[10px] font-medium text-gray-400 px-1">Conectores</span>
             {CONNECTOR_ACTIONS.map(a => <button key={a.action} draggable onDragStart={e => { e.dataTransfer.setData('application/reactflow', `connector:${a.app}:${a.action}`); e.dataTransfer.effectAllowed = 'move' }} className="flex items-center gap-1.5 rounded px-1.5 py-1 text-xs hover:bg-gray-100 cursor-grab">{a.icon} {a.label}<span className="text-gray-400">· {a.app.toUpperCase()}</span></button>)}
           </div>}
-        </div>
+        </div>}
       </div>
       <footer className="px-4 py-2 border-t bg-white shrink-0">
-        <input value={description} onChange={e => { setDescription(e.target.value); autoSave() }} className="h-8 w-full border-0 bg-transparent outline-none text-xs text-gray-400" placeholder="Descripcion (opcional)" />
+        {readOnly ? (
+          <div className="h-8 text-xs text-gray-400 flex items-center">{description || 'Sin descripcion'}</div>
+        ) : (
+          <input value={description} onChange={e => { setDescription(e.target.value); autoSave() }} className="h-8 w-full border-0 bg-transparent outline-none text-xs text-gray-400" placeholder="Descripcion (opcional)" />
+        )}
       </footer>
 
       {editingNodeId && <Modal onClose={() => setEditingNodeId(null)} title="Editar nodo">
