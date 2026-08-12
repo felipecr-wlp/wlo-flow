@@ -38,9 +38,12 @@ export default async function handler(req, res) {
   const uname = (req.query.user_name || '').trim()
 
   // Modo demo abierto para probar. En un workspace real, privado: el dueno
-  // puede todo, un compartido solo ver.
+  // puede todo, un compartido solo ver. Si el embed no trae identidad, se
+  // degrada a abierto igual que la lista: sin saber quien abre no se puede
+  // exigir propiedad.
   const demo = flow.workspace_id === 'demo'
-  const esDueno = demo ||
+  const sinIdentidad = !uid && !uname
+  const esDueno = demo || sinIdentidad ||
     (!!uid && flow.owner === uid) ||
     (!!uname && flow.owner === uname)
   const esCompartido = demo ||

@@ -45,14 +45,14 @@ export default async function handler(req, res) {
 
     if (error) return res.status(500).json({ error: error.message })
     let lista = data || []
-    // Modo demo (sin WLO) queda abierto para probar el editor. En un workspace
-    // real, privado: solo el dueno y los que tiene en shares.
-    if (workspaceId !== 'demo') {
-      if (!uid && !uname) {
-        lista = []
-      } else {
-        lista = lista.filter(f => esOwner(f) || esShared(f))
-      }
+    // Modo demo (sin WLO) queda abierto para probar el editor.
+    // En un workspace real, cuando WLO manda la identidad (user_id o user_name)
+    // es privado: solo el dueno y los que tiene en shares. Si el embed no trae
+    // ninguna identidad, no hay forma de saber quien abre la herramienta, asi
+    // que se degrada al comportamiento abierto de antes en vez de mostrar una
+    // lista vacia. La privacidad se activa sola cuando WLO pasa la sesion.
+    if (workspaceId !== 'demo' && (uid || uname)) {
+      lista = lista.filter(f => esOwner(f) || esShared(f))
     }
     return res.json(lista)
   }

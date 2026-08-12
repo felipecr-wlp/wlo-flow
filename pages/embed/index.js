@@ -187,9 +187,12 @@ function api(wsId, path, ident) {
 
 function esDuenoDe(f, wsId, ident) {
   if (wsId === 'demo') return true
+  // Sin ninguna identidad en el embed, el modo es abierto (igual que el API):
+  // sin saber quien abre no hay propiedad que exigir.
+  if (!ident || (!ident.id && !ident.name)) return true
   if (!f || !f.owner) return false
-  if (ident && ident.id && f.owner === ident.id) return true
-  if (ident && ident.name && f.owner === ident.name) return true
+  if (ident.id && f.owner === ident.id) return true
+  if (ident.name && f.owner === ident.name) return true
   return false
 }
 
