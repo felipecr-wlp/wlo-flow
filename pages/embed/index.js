@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, createContext, useContext } from 'react'
 import Head from 'next/head'
 import {
   ReactFlow, Controls, Background, MiniMap, useNodesState, useEdgesState,
@@ -175,11 +175,22 @@ function ConnectorNode({ data, selected }) {
 const FLOWS_KEY = 'wlo_flows_index'
 const FlowContext = createContext(null)
 
-// API helpers
-function api(wsId, path, identity) {
+// API helpers. ident = { id, name }: el id es la identidad efectiva (el
+// profile_id que manda WLO, o el id resuelto desde la lista de miembros), y el
+// nombre sirve de respaldo para flujos viejos guardados con el nombre.
+function api(wsId, path, ident) {
   const q = [`workspace_id=${encodeURIComponent(wsId)}`]
-  if (identity) q.push(`user_id=${encodeURIComponent(identity)}`)
+  if (ident && ident.id) q.push(`user_id=${encodeURIComponent(ident.id)}`)
+  if (ident && ident.name) q.push(`user_name=${encodeURIComponent(ident.name)}`)
   return `/api/flows${path || ''}?${q.join('&')}`
+}
+
+function esDuenoDe(f, wsId, ident) {
+  if (wsId === 'demo') return true
+  if (!f || !f.owner) return false
+  if (ident && ident.id && f.owner === ident.id) return true
+  if (ident && ident.name && f.owner === ident.name) return true
+  return false
 }
 
 export default function FlowApp() {
@@ -210,21 +221,27 @@ export default function FlowApp() {
     try { const m = p.get('members'); if (m) setMembersList(JSON.parse(m)) } catch { }
   }, [])
 
-  // Identidad efectiva del usuario: el profile_id que manda WLO, y si todavia
-  // no lo manda (deploy viejo), el nombre. Con eso el servidor decide que
-  // flujos son suyos y cuales le comparten.
-  const identity = userId || userName
+  // Identidad efectiva del usuario. Prioridad: el user_id (profile_id) que
+  // manda WLO; si no lo manda (deploy viejo), se resuelve cruzando el nombre
+  // con la lista de miembros del workspace que tambien manda WLO; y como ultimo
+  // respaldo, el nombre. El id es el que se guarda como dueno y en shares, asi
+  // compartir por perfil coincide con los flujos de cada uno.
+  const ident = useMemo(() => {
+    const nombre = userName || ''
+    const yo = membersList.find(m => m && m.name && m.name === userName)
+    return { id: userId || (yo && yo.id) || nombre, name: nombre }
+  }, [userId, userName, membersList])
 
   const doLoadFlows = useCallback(async () => {
     try {
-      const r = await fetch(api(wsId, '', identity))
+      const r = await fetch(api(wsId, '', ident))
       if (r.ok) {
         const data = await r.json()
         setFlows(Array.isArray(data) ? data : [])
       }
     } catch { }
     setLoading(false)
-  }, [wsId, identity])
+  }, [wsId, ident])
 
   useEffect(() => { doLoadFlows() }, [doLoadFlows])
 
@@ -245,7 +262,7 @@ export default function FlowApp() {
   async function createFlow() {
     setCreating(true); setError(null)
     try {
-      const r = await fetch(api(wsId, '', identity), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Nuevo flujo' }) })
+      const r = await fetch(api(wsId, '', ident), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Nuevo flujo' }) })
       if (r.ok) { const f = await r.json(); setCreating(false); openFlow(f.id) }
       else { const e = await r.json().catch(() => ({})); setError('Error al crear: ' + (e.error || r.status)); setCreating(false) }
     } catch (err) { setError('Error de red: ' + err.message); setCreating(false) }
@@ -253,14 +270,14 @@ export default function FlowApp() {
 
   async function deleteFlow(id) {
     if (!confirm('Eliminar este flujo?')) return
-    await fetch(api(wsId, `/${id}`, identity), { method: 'DELETE' })
+    await fetch(api(wsId, `/${id}`, ident), { method: 'DELETE' })
     doLoadFlows()
   }
 
   async function renameFlow(id, title) {
     const t = (title || '').trim()
     if (!t) return
-    const r = await fetch(api(wsId, `/${id}`, identity), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: t }) })
+    const r = await fetch(api(wsId, `/${id}`, ident), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: t }) })
     if (r.ok) doLoadFlows()
   }
 
@@ -273,12 +290,12 @@ export default function FlowApp() {
       {view === 'list' ? (
         <ListView
           flows={flows} loading={loading} creating={creating} wsId={wsId} error={error}
-          enmarcado={enmarcado} userName={userName} membersList={membersList} identity={identity}
+          enmarcado={enmarcado} userName={userName} membersList={membersList} ident={ident}
           onCreate={createFlow} onDelete={deleteFlow} onOpen={openFlow} onRename={renameFlow}
         />
       ) : (
         <EditorView
-          flowId={flowId} wsId={wsId} instId={instId} identity={identity}
+          flowId={flowId} wsId={wsId} instId={instId} ident={ident}
           enmarcado={enmarcado} membersList={membersList}
           onBack={backToList}
         />
@@ -287,7 +304,7 @@ export default function FlowApp() {
   )
 }
 
-function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, membersList, identity, onCreate, onDelete, onOpen, onRename }) {
+function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, membersList, ident, onCreate, onDelete, onOpen, onRename }) {
   const [q, setQ] = useState('')
   const [renamingId, setRenamingId] = useState(null)
   const [renameValue, setRenameValue] = useState('')
@@ -372,7 +389,7 @@ function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, 
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
                 {filtered.map(f => {
-                  const esDueno = wsId === 'demo' || f.owner === identity
+                  const esDueno = esDuenoDe(f, wsId, ident)
                   const ownerName = membersList.find(m => m.id === f.owner)?.name
                   return (
                   <div key={f.id} onClick={() => onOpen(f.id)} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 20, cursor: 'pointer', transition: 'box-shadow .15s', boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}>
@@ -397,7 +414,7 @@ function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, 
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
                           {f.updated_at && <span style={{ fontSize: 11, color: '#cbd5e1' }}>Editado {fmtDate(f.updated_at)}</span>}
                           {f.owner && (
-                            f.owner === identity
+                            esDueno
                               ? <span style={{ fontSize: 10, color: '#3b82f6', background: '#eff6ff', padding: '1px 8px', borderRadius: 99 }}>Tuyo</span>
                               : <span style={{ fontSize: 10, color: '#9333ea', background: '#f5f3ff', padding: '1px 8px', borderRadius: 99 }}>{ownerName || 'Compartido'}</span>
                           )}
@@ -415,7 +432,7 @@ function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, 
   )
 }
 
-function EditorView({ flowId, wsId, instId, identity, enmarcado, membersList, onBack }) {
+function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, onBack }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [saving, setSaving] = useState(false)
@@ -469,7 +486,7 @@ function EditorView({ flowId, wsId, instId, identity, enmarcado, membersList, on
 
   useEffect(() => {
     if (!flowId) return
-    fetch(api(wsId, `/${flowId}`, identity)).then(async r => {
+    fetch(api(wsId, `/${flowId}`, ident)).then(async r => {
       const f = await r.json().catch(() => null)
       if (r.ok && f && f.id) {
         setTitle(f.title || '')
@@ -479,21 +496,21 @@ function EditorView({ flowId, wsId, instId, identity, enmarcado, membersList, on
         setShares(f.shares || [])
         // Solo lectura cuando el flujo no es del usuario y no estamos en demo:
         // un compartido lee pero no edita.
-        setReadOnly(wsId !== 'demo' && !!identity && f.owner !== identity)
+        setReadOnly(!esDuenoDe(f, wsId, ident))
         setLoadError(false)
       } else {
         setLoadError(true)
       }
       setLoaded(true)
     }).catch(() => { setLoadError(true); setLoaded(true) })
-  }, [flowId, wsId, identity])
+  }, [flowId, wsId, ident])
 
   function save(n, e) {
     if (readOnly) return
     setSaving(true)
     setSaveState('saving')
     const body = { title, description, nodes: n || nodes, edges: e || edges, shares }
-    fetch(api(wsId, `/${flowId}`, identity), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    fetch(api(wsId, `/${flowId}`, ident), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); setSaveState('saved'); showToast('Cambios guardados') })
       .catch(() => { setSaveState('error'); showToast('Error al guardar. Revisa tu conexión.', 'error') })
       .finally(() => setSaving(false))
@@ -595,7 +612,7 @@ function EditorView({ flowId, wsId, instId, identity, enmarcado, membersList, on
     const already = shares.find(s => s.profile_id === profileId)
     const newShares = already ? shares.filter(s => s.profile_id !== profileId) : [...shares, { profile_id: profileId, permission: 'view' }]
     setShares(newShares)
-    fetch(api(wsId, `/${flowId}`, identity), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shares: newShares }) })
+    fetch(api(wsId, `/${flowId}`, ident), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shares: newShares }) })
   }
 
   const selCount = nodes.filter(n => n.selected).length
@@ -836,22 +853,27 @@ function EditorView({ flowId, wsId, instId, identity, enmarcado, membersList, on
             <p className="text-xs text-gray-500 mb-2">Enlace directo</p>
             <div className="flex gap-2"><code className="flex-1 text-xs bg-gray-100 rounded px-3 py-2 break-all font-mono">{typeof window !== 'undefined' ? `${window.location.origin}/embed?workspace_id=${wsId}&flow=${flowId}` : ''}</code><button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/embed?workspace_id=${wsId}&flow=${flowId}`) }} className="shrink-0 px-3 py-2 text-xs border rounded-lg hover:bg-gray-50">Copiar</button></div>
           </div>
-          {membersList.length > 0 && (
+          {membersList.length > 0 ? (
             <div>
               <p className="text-xs font-medium text-gray-700 mb-2">Miembros del workspace ({membersList.length})</p>
               <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-1">
                 {membersList.map(m => {
                   const isShared = shares.some(s => s.profile_id === m.id)
+                  const soyYo = !!ident && ident.name && m.name === ident.name
                   return (
-                    <button key={m.id} onClick={() => toggleShare(m.id)} className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left transition-colors ${isShared ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'}`}>
+                    <button key={m.id} onClick={() => { if (!soyYo) toggleShare(m.id) }} className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left transition-colors ${isShared ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'} ${soyYo ? 'cursor-default opacity-80' : ''}`}>
                       <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-600 shrink-0">{(m.name || '?')[0].toUpperCase()}</div>
-                      <span className="flex-1 truncate">{m.name}</span>
+                      <span className="flex-1 truncate">{m.name}{soyYo ? ' (tú)' : ''}</span>
                       <span className="text-[10px] text-gray-400">{m.role}</span>
                       {isShared && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">compartido</span>}
                     </button>
                   )
                 })}
               </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-gray-300 p-4 text-xs text-gray-500 leading-relaxed">
+              No se pudo cargar la lista de miembros. Para ver a los usuarios del workspace y compartir con ellos, abre esta herramienta dentro de WLO.
             </div>
           )}
         </div>

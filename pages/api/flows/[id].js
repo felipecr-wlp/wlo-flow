@@ -32,16 +32,20 @@ export default async function handler(req, res) {
   if (error) return res.status(500).json({ error: error.message })
   if (!flow) return res.status(404).json({ error: 'No encontrado' })
 
-  // Quien pide: identidad que manda WLO (user_id o user_name). El dueno se
-  // guardo con esa misma identidad al crear el flujo.
-  const identidad = (req.query.user_id || '').trim() || (req.query.user_name || '').trim()
+  // Quien pide: WLO manda user_id (profile_id) y user_name. El dueno se guardo
+  // con el profile_id al crear el flujo; el nombre respalda flujos viejos.
+  const uid = (req.query.user_id || '').trim()
+  const uname = (req.query.user_name || '').trim()
 
   // Modo demo abierto para probar. En un workspace real, privado: el dueno
   // puede todo, un compartido solo ver.
   const demo = flow.workspace_id === 'demo'
-  const esDueno = demo || (!!identidad && flow.owner === identidad)
+  const esDueno = demo ||
+    (!!uid && flow.owner === uid) ||
+    (!!uname && flow.owner === uname)
   const esCompartido = demo ||
-    (!!identidad && Array.isArray(flow.shares) && flow.shares.some(s => s && s.profile_id === identidad))
+    (!!uid && Array.isArray(flow.shares) && flow.shares.some(s => s && s.profile_id === uid)) ||
+    (!!uname && Array.isArray(flow.shares) && flow.shares.some(s => s && s.profile_id === uname))
 
   if (!demo && !esDueno && !esCompartido) {
     return res.status(403).json({ error: 'No tienes acceso a este flujo' })

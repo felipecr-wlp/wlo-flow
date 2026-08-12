@@ -26,10 +26,14 @@ export default async function handler(req, res) {
 
   const workspaceId = req.query.workspace_id || 'demo'
 
-  // Identidad del usuario que abre la herramienta. WLO la manda como user_id
-  // (profile_id) o user_name. La usa el servidor para decidir que flujos ve:
-  // los propios mas los compartidos con el.
-  const identidad = (req.query.user_id || '').trim() || (req.query.user_name || '').trim()
+  // Identidad del usuario que abre la herramienta. WLO manda user_id
+  // (profile_id) y user_name. El dueno se guarda con el profile_id; el nombre
+  // sirve de respaldo para flujos viejos guardados con el nombre. Con eso el
+  // servidor decide que flujos ve: los propios mas los compartidos con el.
+  const uid = (req.query.user_id || '').trim()
+  const uname = (req.query.user_name || '').trim()
+  const esOwner = f => !!f.owner && (f.owner === uid || (uname && f.owner === uname))
+  const esShared = f => Array.isArray(f.shares) && f.shares.some(s => s && s.profile_id && (s.profile_id === uid || (uname && s.profile_id === uname)))
 
   if (req.method === 'GET') {
     const { data, error } = await supabase
@@ -44,13 +48,10 @@ export default async function handler(req, res) {
     // Modo demo (sin WLO) queda abierto para probar el editor. En un workspace
     // real, privado: solo el dueno y los que tiene en shares.
     if (workspaceId !== 'demo') {
-      if (!identidad) {
+      if (!uid && !uname) {
         lista = []
       } else {
-        lista = lista.filter(f =>
-          f.owner === identidad ||
-          (Array.isArray(f.shares) && f.shares.some(s => s && s.profile_id === identidad))
-        )
+        lista = lista.filter(f => esOwner(f) || esShared(f))
       }
     }
     return res.json(lista)
@@ -66,7 +67,7 @@ export default async function handler(req, res) {
       nodes: [],
       edges: [],
       shares: [],
-      owner: workspaceId === 'demo' ? '' : identidad,
+      owner: workspaceId === 'demo' ? '' : (uid || uname),
     }
     const { error } = await supabase.from('flows').insert(flow)
     if (error) return res.status(500).json({ error: error.message })
