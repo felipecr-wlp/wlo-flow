@@ -211,6 +211,7 @@ export default function FlowApp() {
   const [userId, setUserId] = useState('')
   const [userRole, setUserRole] = useState('')
   const [membersList, setMembersList] = useState([])
+  const [embedInfo, setEmbedInfo] = useState({})
   const flowParam = useRef(null)
 
   useEffect(() => {
@@ -222,6 +223,14 @@ export default function FlowApp() {
     setUserRole(p.get('user_role') || '')
     flowParam.current = p.get('flow') || null
     try { const m = p.get('members'); if (m) setMembersList(JSON.parse(m)) } catch { }
+    // Lo que llego en la URL del embed, para diagnosticar que manda WLO y en
+    // que modo cae la herramienta. Se muestra como etiqueta en la UI.
+    const raw = {}
+    for (const k of ['workspace_id', 'workspace_slug', 'install_id', 'user_id', 'user_name', 'user_role', 'path', 'flow']) {
+      const v = p.get(k)
+      if (v) raw[k] = v
+    }
+    setEmbedInfo({ ...raw, enmarcado: typeof window !== 'undefined' && window.top !== window })
   }, [])
 
   // Identidad efectiva del usuario. Prioridad: el user_id (profile_id) que
@@ -234,6 +243,11 @@ export default function FlowApp() {
     const yo = membersList.find(m => m && m.name && m.name === userName)
     return { id: userId || (yo && yo.id) || nombre, name: nombre }
   }, [userId, userName, membersList])
+
+  // Modo efectivo: que puede hacer la herramienta segun lo que mando el embed.
+  // demo abierto para probar, abierto sin sesion (WLO no mando identidad) y
+  // privado cuando si la mando.
+  const modo = wsId === 'demo' ? 'demo' : (!ident.id && !ident.name) ? 'abierto' : 'privado'
 
   const doLoadFlows = useCallback(async () => {
     try {
@@ -294,12 +308,13 @@ export default function FlowApp() {
         <ListView
           flows={flows} loading={loading} creating={creating} wsId={wsId} error={error}
           enmarcado={enmarcado} userName={userName} membersList={membersList} ident={ident}
+          embedInfo={embedInfo} modo={modo}
           onCreate={createFlow} onDelete={deleteFlow} onOpen={openFlow} onRename={renameFlow}
         />
       ) : (
         <EditorView
           flowId={flowId} wsId={wsId} instId={instId} ident={ident}
-          enmarcado={enmarcado} membersList={membersList}
+          enmarcado={enmarcado} membersList={membersList} embedInfo={embedInfo} modo={modo}
           onBack={backToList}
         />
       )}
@@ -307,7 +322,38 @@ export default function FlowApp() {
   )
 }
 
-function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, membersList, ident, onCreate, onDelete, onOpen, onRename }) {
+// Etiqueta de diagnostico: muestra que mando el embed (WLO) y en que modo cae
+// la herramienta. Sirve para saber con que datos se puede trabajar mientras WLO
+// de produccion no mande la sesion.
+function EmbedInfoLabel({ embedInfo, modo, membersList, wsId }) {
+  const resumen = [
+    embedInfo.enmarcado ? 'iframe' : 'standalone',
+    `ws: ${embedInfo.workspace_id || embedInfo.workspace_slug || 'demo'}`,
+    `user: ${embedInfo.user_name || 'sin user_name'}`,
+    `id: ${embedInfo.user_id ? embedInfo.user_id.slice(0, 8) : '—'}`,
+    `rol: ${embedInfo.user_role || '—'}`,
+    `miembros: ${(membersList || []).length}`,
+    `modo: ${modo}`,
+  ].join(' · ')
+  const explicacion = {
+    demo: 'Demo abierto, todo editable, sin sesion',
+    abierto: 'Abierto, sin sesion de WLO (no se puede exigir propiedad)',
+    privado: 'Privado, solo tus flujos y los compartidos',
+  }[modo] || modo
+  return (
+    <div style={{ padding: '6px 24px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+      <div
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%', fontSize: 10, color: '#475569', background: '#eef2f7', border: '1px solid #e2e8f0', borderRadius: 4, padding: '3px 8px', cursor: 'help' }}
+        title={`Parametros recibidos del embed:\n${JSON.stringify(embedInfo, null, 2)}\n\n${explicacion}`}
+      >
+        <span style={{ fontWeight: 600, color: '#334155' }}>embed</span>
+        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{resumen}</span>
+      </div>
+    </div>
+  )
+}
+
+function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, membersList, ident, embedInfo, modo, onCreate, onDelete, onOpen, onRename }) {
   const [q, setQ] = useState('')
   const [renamingId, setRenamingId] = useState(null)
   const [renameValue, setRenameValue] = useState('')
@@ -332,6 +378,7 @@ function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, 
           {wsId !== 'demo' && <span style={{ fontSize: 10, color: '#3b82f6', background: '#eff6ff', padding: '2px 6px', borderRadius: 4 }}>{userName || (enmarcado ? 'WLO' : 'standalone')}</span>}
         </div>
       </div>
+      <EmbedInfoLabel embedInfo={embedInfo} modo={modo} membersList={membersList} wsId={wsId} />
       {!enmarcado && wsId === 'demo' && (
         <div style={{ padding: '14px 24px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, maxWidth: 900 }}>
@@ -435,7 +482,7 @@ function ListView({ flows, loading, creating, wsId, error, enmarcado, userName, 
   )
 }
 
-function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, onBack }) {
+function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embedInfo, modo, onBack }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [saving, setSaving] = useState(false)
@@ -655,6 +702,10 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, onBac
         <button onClick={handleExport} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Download size={14} />Exportar</button>
         {!readOnly && <button onClick={handleImport} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Upload size={14} />Importar</button>}
         {!readOnly && <button onClick={() => setShowShare(true)} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Share2 size={14} />Compartir</button>}
+        <div
+          title={`Parametros recibidos del embed:\n${JSON.stringify(embedInfo, null, 2)}`}
+          style={{ fontSize: 10, color: '#64748b', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240, cursor: 'help' }}
+        >embed: {embedInfo.enmarcado ? 'iframe' : 'standalone'} · {modo}</div>
       </header>
       {!readOnly && <div className="flex items-center gap-1 px-2 py-1 border-b bg-gray-50 shrink-0">
         <button onClick={() => setTopBarCollapsed(!topBarCollapsed)} className="p-1 hover:bg-gray-200 rounded text-gray-500"><ChevronDown size={14} className={`transition-transform ${topBarCollapsed ? '-rotate-90' : ''}`} /></button>
