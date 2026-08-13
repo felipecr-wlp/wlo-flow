@@ -75,56 +75,15 @@ function fmtDate(iso) {
 function CustomNode({ data, selected }) {
   const ct = data?.content?.contentType || 'text'
   const color = data?.color || ''
-  const tags = Array.isArray(data?.tags) ? data.tags.filter(Boolean) : []
-  const fields = Array.isArray(data?.fields) ? data.fields : []
-  const { updateField, addField, removeField } = useContext(FlowContext) || {}
   const borderColor = selected ? '#3b82f6' : color || '#e2e8f0'
   return (
-    <div className="bg-white border-2 rounded-lg px-3 py-2 shadow-sm min-w-[200px] max-w-[280px]" style={{ borderColor, opacity: data?.locked ? 0.7 : 1, ...(selected ? { boxShadow: '0 0 0 2px rgba(59,130,246,.35)' } : {}) }}>
+    <div className="bg-white border-2 rounded-lg px-3 py-2 shadow-sm min-w-[160px] max-w-[240px]" style={{ borderColor, opacity: data?.locked ? 0.7 : 1, ...(selected ? { boxShadow: '0 0 0 2px rgba(59,130,246,.35)' } : {}) }}>
       <Handle type="target" position={Position.Top} className="!bg-gray-400" />
       <div className="flex items-center gap-2">
-        <span className="text-blue-500">{NI[ct]}</span>
+        <span className="text-blue-500 shrink-0">{NI[ct]}</span>
         <span className="text-xs font-semibold truncate flex-1">{data?.label || 'Nodo'}</span>
-        {data?.locked && <Lock size={12} className="text-amber-500" />}
+        {data?.locked && <Lock size={12} className="text-amber-500 shrink-0" />}
       </div>
-      {data?.subtitle && <div className="text-[10px] text-gray-400 truncate mt-0.5">{data.subtitle}</div>}
-      <div className="mt-1.5 space-y-1">
-        {fields.map((f, i) => (
-          <div key={i} className="flex items-center gap-1">
-            <input
-              className="nodrag w-[38%] min-w-0 h-6 rounded border border-gray-200 bg-gray-50 px-1.5 text-[10px] outline-none focus:border-blue-400"
-              value={f.key || ''} placeholder="campo"
-              onChange={e => updateField?.(id, i, 'key', e.target.value)}
-              onPointerDown={e => e.stopPropagation()} />
-            <input
-              className="nodrag flex-1 min-w-0 h-6 rounded border border-gray-200 bg-gray-50 px-1.5 text-[10px] outline-none focus:border-blue-400"
-              value={f.value || ''} placeholder="valor"
-              onChange={e => updateField?.(id, i, 'value', e.target.value)}
-              onPointerDown={e => e.stopPropagation()} />
-            {selected && (
-              <button title="Quitar campo" className="nodrag shrink-0 text-gray-300 hover:text-red-500" onClick={() => removeField?.(id, i)} onPointerDown={e => e.stopPropagation()}><X size={10} /></button>
-            )}
-          </div>
-        ))}
-        <button className="nodrag flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-600" onClick={() => addField?.(id)} onPointerDown={e => e.stopPropagation()}><Plus size={10} />Agregar campo</button>
-      </div>
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-1.5">
-          {tags.map(t => <span key={t} className="text-[9px] bg-blue-50 text-blue-600 rounded-full px-1.5 py-0.5 truncate max-w-[110px]">{t}</span>)}
-        </div>
-      )}
-      {data?.owner && (
-        <div className="flex items-center gap-1 mt-1.5 text-[10px] text-gray-500 min-w-0">
-          <span className="w-4 h-4 rounded-full bg-gray-200 flex items-center justify-center text-[8px] font-bold text-gray-600 shrink-0">{(data.owner || '?')[0].toUpperCase()}</span>
-          <span className="truncate">{data.owner}</span>
-        </div>
-      )}
-      {data?.link && (
-        <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-400 min-w-0">
-          <LinkIcon size={10} className="shrink-0" />
-          <a href={data.link} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="truncate hover:text-blue-600 hover:underline">{data.link}</a>
-        </div>
-      )}
       <Handle type="source" position={Position.Bottom} className="!bg-gray-400" />
     </div>
   )
@@ -505,6 +464,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   const [editingConnectorId, setEditingConnectorId] = useState(null)
   const [connApp, setConnApp] = useState('wli'); const [connAction, setConnAction] = useState('emailer/create_campaign')
   const [connLabel, setConnLabel] = useState(''); const [connConfig, setConnConfig] = useState({})
+  const [connHtmlPreview, setConnHtmlPreview] = useState(false)
   const [editingShapeId, setEditingShapeId] = useState(null)
   const [shapeW, setShapeW] = useState(160); const [shapeH, setShapeH] = useState(120)
   const [shapeLabel, setShapeLabel] = useState(''); const [shapeFill, setShapeFill] = useState('#f1f5f9')
@@ -838,14 +798,30 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                   </label>
                 ) : (
                   <div key={f.key}>
-                    <label className="text-[11px] text-gray-400 block mb-0.5">{f.label}</label>
-                    <textarea
-                      value={connConfig[f.key] !== undefined && connConfig[f.key] !== null ? String(connConfig[f.key]) : ''}
-                      onChange={e => setConnCfg(f.key, e.target.value)}
-                      placeholder={f.key === 'html' ? '<p>Hola {nombre}, …</p>' : f.key === 'email' ? '{email_tarea} o correo fijo' : f.key === 'list_id' ? 'Si no lo pones, se elige la base al crear la campaña' : ''}
-                      rows={f.key === 'html' ? 5 : 1}
-                      className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 font-mono resize-y"
-                    />
+                    <div className="flex items-center justify-between mb-0.5">
+                      <label className="text-[11px] text-gray-400">{f.label}</label>
+                      {f.key === 'html' && (
+                        <button type="button" onClick={() => setConnHtmlPreview(!connHtmlPreview)} className={`flex items-center gap-1 text-[10px] rounded px-1.5 py-0.5 ${connHtmlPreview ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}>
+                          {connHtmlPreview ? <Edit3 size={10} /> : <Eye size={10} />}{connHtmlPreview ? 'Codigo' : 'Preview'}
+                        </button>
+                      )}
+                    </div>
+                    {f.key === 'html' && connHtmlPreview ? (
+                      <iframe
+                        srcDoc={String(connConfig[f.key] || '')}
+                        className="w-full min-h-[180px] rounded-md border bg-white"
+                        sandbox="allow-scripts"
+                        style={{ border: '1px solid #e2e8f0' }}
+                      />
+                    ) : (
+                      <textarea
+                        value={connConfig[f.key] !== undefined && connConfig[f.key] !== null ? String(connConfig[f.key]) : ''}
+                        onChange={e => setConnCfg(f.key, e.target.value)}
+                        placeholder={f.key === 'html' ? '<p>Hola {nombre}, …</p>' : f.key === 'email' ? '{email_tarea} o correo fijo' : f.key === 'list_id' ? 'Si no lo pones, se elige la base al crear la campaña' : ''}
+                        rows={f.key === 'html' ? 5 : 1}
+                        className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 font-mono resize-y"
+                      />
+                    )}
                   </div>
                 ))}
               </div>
