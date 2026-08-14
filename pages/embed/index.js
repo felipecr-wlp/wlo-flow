@@ -281,6 +281,47 @@ export default function FlowApp() {
   )
 }
 
+// Descarga de JSON por enlace. Funciona standalone; dentro del iframe sandbox
+// de WLO (sin allow-downloads) el navegador la bloquea, por eso el embed usa el
+// modal con copiado como respaldo.
+function downloadJson(text, filename) {
+  const blob = new Blob([text], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function copyTextoLegacy(texto) {
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = texto
+    ta.setAttribute('readonly', '')
+    ta.style.position = 'fixed'
+    ta.style.left = '-9999px'
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    return ok
+  } catch {
+    return false
+  }
+}
+
+// Copia al portapapeles con respaldo, para que funcione tambien dentro del
+// iframe sandbox donde la Clipboard API puede estar bloqueada por policy.
+function copyTexto(texto) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(texto).catch(() => copyTextoLegacy(texto))
+  }
+  return Promise.resolve(copyTextoLegacy(texto))
+}
+
 // Etiqueta de diagnostico: muestra que mando el embed (WLO) y en que modo cae
 // la herramienta. Sirve para saber con que datos se puede trabajar mientras WLO
 // de produccion no mande la sesion.
@@ -454,6 +495,8 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   const [altHeld, setAltHeld] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showShare, setShowShare] = useState(false)
+  const [showExport, setShowExport] = useState(false)
+  const [exportText, setExportText] = useState('')
   const [shares, setShares] = useState([])
   const [editingNodeId, setEditingNodeId] = useState(null)
   const [nodeLabel, setNodeLabel] = useState(''); const [nodeContent, setNodeContent] = useState('')
@@ -590,7 +633,19 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   function handleNodeContextMenu(e, node) { e.preventDefault(); setCtxEdgeMenu(null); setCtxMenu({ x: e.clientX, y: e.clientY, nodeId: node.id }) }
   function handleEdgeContextMenu(e, edge) { e.preventDefault(); setCtxMenu(null); setCtxEdgeMenu({ x: e.clientX, y: e.clientY, edgeId: edge.id }) }
   function handleEdgeClick() { const edge = edges.find(e => e.id === ctxEdgeMenu?.edgeId); if (edge) { setEditingEdgeId(edge.id); setEdgeLabel(edge.label || ''); setEdgeColor(edge.style?.stroke || '#64748b'); setEdgeWidth(edge.style?.strokeWidth || 2); setEdgeType(edge.type || 'default'); setCtxEdgeMenu(null) } }
-  const handleExport = () => { const data = { title, description, nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }; const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${title || 'flujo'}.wlo.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 1000) }
+  const handleExport = () => {
+    const data = { title, description, nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }
+    const text = JSON.stringify(data, null, 2)
+    if (enmarcado) {
+      // Dentro del iframe sandbox de WLO el enlace de descarga se bloquea
+      // (sin allow-downloads). Se muestra el JSON para copiarlo, con un boton de
+      // descarga por si el ambiente igual la permite.
+      setExportText(text)
+      setShowExport(true)
+    } else {
+      downloadJson(text, `${title || 'flujo'}.wlo.json`)
+    }
+  }
   const handleImport = () => { const el = document.createElement('input'); el.type = 'file'; el.accept = '.json'; el.onchange = async (ev) => { const file = ev.target.files?.[0]; if (!file) return; try { const text = await file.text(); const data = JSON.parse(text); if (data.nodes) { pushHistory(nodes, edges); setNodes(data.nodes); setEdges(data.edges || []); if (data.title) setTitle(data.title); if (data.description !== undefined) setDescription(data.description); autoSave(data.nodes, data.edges || []); showToast('Flujo importado') } } catch { showToast('Archivo inválido', 'error') } }; el.click() }
 
   async function publishFlow() {
@@ -914,6 +969,27 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
           {toast.msg}
         </div>
       )}
+      {showExport && <Modal onClose={() => setShowExport(false)} title="Exportar flujo">
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500">Copiá el contenido o descargá el archivo JSON:</p>
+          <textarea
+            readOnly value={exportText}
+            onClick={e => e.target.select()}
+            className="w-full min-h-[220px] rounded-md border px-3 py-2 text-[11px] font-mono outline-none resize-y bg-gray-50"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => { copyTexto(exportText).then(ok => showToast(ok ? 'Copiado al portapapeles' : 'No se pudo copiar, copialo a mano', ok ? 'success' : 'error')) }}
+              className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 px-3 py-2 text-sm"
+            ><Copy size={14} />Copiar</button>
+            <button
+              onClick={() => downloadJson(exportText, `${title || 'flujo'}.wlo.json`)}
+              className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 px-3 py-2 text-sm"
+            ><Download size={14} />Descargar</button>
+          </div>
+          <p className="text-[11px] text-gray-400">Dentro de WLO el navegador puede bloquear la descarga directa; la opción segura es copiar el JSON.</p>
+        </div>
+      </Modal>}
     </div>
     </FlowContext.Provider>
   )
