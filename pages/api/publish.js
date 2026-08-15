@@ -63,8 +63,12 @@ export default async function handler(req, res) {
           else payload[k] = t.split(',').map(x => x.trim()).filter(Boolean)
         } else payload[k] = raw
       }
-      // Headers configurables.
+      // Headers configurables + autenticacion.
       const headers = { 'Content-Type': 'application/json' }
+      const authType = config.auth_type || 'none'
+      if (authType === 'bearer' && config.auth_token) headers['Authorization'] = `Bearer ${config.auth_token}`
+      else if (authType === 'api_key' && config.auth_key_name) headers[config.auth_key_name] = config.auth_key_value || ''
+      else if (authType === 'basic' && (config.auth_user || config.auth_pass)) headers['Authorization'] = 'Basic ' + Buffer.from(`${config.auth_user || ''}:${config.auth_pass || ''}`).toString('base64')
       for (const h of (Array.isArray(config.headers) ? config.headers : [])) {
         if (h && h.key && String(h.key).trim()) headers[String(h.key).trim()] = h.value ?? ''
       }

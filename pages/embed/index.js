@@ -60,7 +60,8 @@ const CONNECTOR_ACTIONS = [
     fields: [
       { key: 'url', label: 'URL del endpoint' },
       { key: 'method', label: 'Método', type: 'select', options: ['POST', 'PUT', 'PATCH', 'DELETE', 'GET'] },
-      { key: 'headers', label: 'Headers (clave -> valor)', type: 'fields' },
+      { key: 'auth_type', label: 'Autenticación', type: 'auth' },
+      { key: 'headers', label: 'Headers adicionales (clave -> valor)', type: 'fields' },
       { key: 'body', label: 'Body / payload (campo -> valor o referencia)', type: 'typed' },
     ],
   },
@@ -667,6 +668,18 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     setConnCfg('body', body)
     showToast(`Payload cargado desde "${src.data?.label || 'nodo anterior'}"`)
   }
+  function construirHeaders(config) {
+    const headers = { 'Content-Type': 'application/json' }
+    const authType = config.auth_type || 'none'
+    if (authType === 'bearer' && config.auth_token) headers['Authorization'] = `Bearer ${config.auth_token}`
+    else if (authType === 'api_key' && config.auth_key_name) headers[config.auth_key_name] = config.auth_key_value || ''
+    else if (authType === 'basic' && (config.auth_user || config.auth_pass)) headers['Authorization'] = 'Basic ' + (typeof btoa === 'function' ? btoa(`${config.auth_user || ''}:${config.auth_pass || ''}`) : '')
+    for (const h of (Array.isArray(config.headers) ? config.headers : [])) {
+      if (h && h.key && String(h.key).trim()) headers[String(h.key).trim()] = h.value ?? ''
+    }
+    return headers
+  }
+
   async function probarConexion() {
     const url = String(connConfig.url || '').trim()
     const method = String(connConfig.method || 'POST').trim().toUpperCase()
@@ -680,10 +693,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
       else if (b.type === 'array') { const t = String(raw).trim(); if (t.startsWith('[')) { try { payload[k] = JSON.parse(t) } catch { payload[k] = t.split(',').map(x => x.trim()) } } else payload[k] = t.split(',').map(x => x.trim()).filter(Boolean) }
       else payload[k] = raw
     }
-    const headers = { 'Content-Type': 'application/json' }
-    for (const h of (Array.isArray(connConfig.headers) ? connConfig.headers : [])) {
-      if (h && h.key && String(h.key).trim()) headers[String(h.key).trim()] = h.value ?? ''
-    }
+    const headers = construirHeaders(connConfig)
     setConnTesting(true); setConnTestResult(null)
     try {
       const opts = { method, headers }
@@ -1000,6 +1010,46 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                       ))}
                       <button type="button" onClick={() => setConnCfg(f.key, [...(connConfig[f.key] || []), { key: '', type: 'text', value: '' }])} className="w-full flex items-center justify-center gap-1.5 h-8 rounded-md border border-dashed hover:bg-gray-50 text-xs text-gray-500"><Plus size={12} />Agregar campo al payload</button>
                     </div>
+                  </div>
+                ) : f.type === 'auth' ? (
+                  <div key={f.key}>
+                    <label className="text-[11px] text-gray-400 block mb-1">{f.label}</label>
+                    <select value={connConfig[f.key] || 'none'} onChange={e => setConnCfg(f.key, e.target.value)} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200">
+                      <option value="none">Sin autenticación</option>
+                      <option value="bearer">Bearer Token</option>
+                      <option value="api_key">API Key</option>
+                      <option value="basic">Basic Auth</option>
+                    </select>
+                    {(connConfig[f.key] || 'none') === 'bearer' && (
+                      <div className="mt-1.5">
+                        <label className="text-[10px] text-gray-400 block mb-0.5">Token</label>
+                        <input value={connConfig.auth_token || ''} onChange={e => setConnCfg('auth_token', e.target.value)} placeholder="pck_live_... o JWT" className="w-full h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                      </div>
+                    )}
+                    {(connConfig[f.key] || 'none') === 'api_key' && (
+                      <div className="grid grid-cols-2 gap-1.5 mt-1.5">
+                        <div>
+                          <label className="text-[10px] text-gray-400 block mb-0.5">Nombre del header</label>
+                          <input value={connConfig.auth_key_name || ''} onChange={e => setConnCfg('auth_key_name', e.target.value)} placeholder="X-Api-Key" className="w-full h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-400 block mb-0.5">Valor</label>
+                          <input value={connConfig.auth_key_value || ''} onChange={e => setConnCfg('auth_key_value', e.target.value)} placeholder="clave-secreta" className="w-full h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                        </div>
+                      </div>
+                    )}
+                    {(connConfig[f.key] || 'none') === 'basic' && (
+                      <div className="grid grid-cols-2 gap-1.5 mt-1.5">
+                        <div>
+                          <label className="text-[10px] text-gray-400 block mb-0.5">Usuario</label>
+                          <input value={connConfig.auth_user || ''} onChange={e => setConnCfg('auth_user', e.target.value)} className="w-full h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-400 block mb-0.5">Contraseña</label>
+                          <input type="password" value={connConfig.auth_pass || ''} onChange={e => setConnCfg('auth_pass', e.target.value)} className="w-full h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200" />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div key={f.key}>
