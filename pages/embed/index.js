@@ -11,7 +11,7 @@ import {
   Square, Circle, Minus, Grid3X3, ChevronDown, ChevronUp, Copy, Undo2, Redo2,
   Lock, Unlock, ArrowUp, ArrowDown, Maximize, Download, Upload, Eye, Edit3,
   X, HelpCircle, Share2, Plus, PenTool, Layout, Hand, Search, Check,
-  AlertTriangle, RefreshCw, Plug, Send, UserPlus, List as ListIcon, Play,
+  AlertTriangle, RefreshCw, Plug, Send, UserPlus, List as ListIcon, Play, Home,
 } from 'lucide-react'
 
 const CONTENT_TYPES = ['text', 'html', 'url', 'document']
@@ -822,7 +822,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     <FlowContext.Provider value={flowCtx}>
     <div className="flex flex-col h-screen" tabIndex={0} onKeyDown={onKeyDown} onClick={() => { setCtxMenu(null); setCtxEdgeMenu(null) }}>
       <header className="flex items-center gap-3 px-4 py-2 border-b bg-white shrink-0">
-        {!enmarcado && <button onClick={onBack} className="text-gray-500 hover:text-gray-700 text-sm">← Volver</button>}
+        <button onClick={onBack} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm" title="Volver al listado de flujos"><Home size={14} /></button>
         {readOnly ? (
           <span className="h-8 max-w-xs font-semibold text-lg flex-1 truncate">{title || 'Sin titulo'}</span>
         ) : (
@@ -840,7 +840,6 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
           title={`Parametros recibidos del embed:\n${JSON.stringify(embedInfo, null, 2)}`}
           style={{ fontSize: 10, color: '#64748b', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240, cursor: 'help' }}
         >embed: {embedInfo.enmarcado ? 'iframe' : 'standalone'} · {modo}</div>
-        <button onClick={onBack} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm" title="Volver al listado de flujos"><ListIcon size={14} />Flujos</button>
       </header>
       {!readOnly && <div className="flex items-center gap-1 px-2 py-1 border-b bg-gray-50 shrink-0">
         <button onClick={() => setTopBarCollapsed(!topBarCollapsed)} className="p-1 hover:bg-gray-200 rounded text-gray-500"><ChevronDown size={14} className={`transition-transform ${topBarCollapsed ? '-rotate-90' : ''}`} /></button>
