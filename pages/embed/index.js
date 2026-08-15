@@ -67,6 +67,40 @@ const CONNECTOR_ACTIONS = [
 ]
 const CONNECTOR_APPS = [...new Set(CONNECTOR_ACTIONS.map(a => a.app))]
 
+/**
+ * Devuelve un objeto plano campo -> valor con los "outputs" de cualquier nodo.
+ * Sirve para que el nodo REST mapee datos de nodos de texto, HTML, figuras o
+ * conectores (WLI) sin importar su tipo.
+ */
+function getNodeOutputs(node) {
+  const d = node?.data || {}
+  const out = {}
+  // Nodo conector (WLI o REST): usa las salidas de su accion o su config.
+  if (d.app && d.action) {
+    const def = CONNECTOR_ACTIONS.find(a => a.app === d.app && a.action === d.action)
+    const cfg = (d.config && typeof d.config === 'object') ? d.config : {}
+    const claves = (def?.outputs && def.outputs.length) ? def.outputs : Object.keys(cfg)
+    for (const k of claves) out[k] = cfg[k]
+    return out
+  }
+  // Nodo de contenido (texto, html, url, documento): label + contenido + campos.
+  if (d.content) {
+    out['label'] = d.label || ''
+    out['content'] = d.content.content || ''
+    for (const f of (Array.isArray(d.fields) ? d.fields : [])) {
+      if (f && f.key) out[f.key] = f.value ?? ''
+    }
+    return out
+  }
+  // Figura: label + shape.
+  if (d.shape) {
+    out['label'] = d.label || ''
+    out['shape'] = d.shape
+    return out
+  }
+  return out
+}
+
 function fmtDate(iso) {
   if (!iso) return ''
   const d = new Date(iso)
@@ -661,13 +695,14 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     return nodes.filter(n => edges.some(e => e.target === nodeId && e.source === n.id))
   }
   function cargarPayload() {
-    // Toma el primer predecesor y copia sus valores de config al body.
+    // Toma el primer predecesor (de cualquier tipo) y copia sus salidas al body.
     const pre = predecesoresDe(editingConnectorId)
     if (!pre.length) { showToast('Conecta primero un nodo de origen a este nodo REST', 'error'); return }
     const src = pre[0]
-    const srcCfg = (src.data?.config && typeof src.data.config === 'object') ? src.data.config : {}
-    const salidas = Object.keys(srcCfg)
-    const body = salidas.map(k => ({ key: k, type: 'text', value: srcCfg[k] !== undefined && srcCfg[k] !== null ? String(srcCfg[k]) : '' }))
+    const salidas = getNodeOutputs(src)
+    const claves = Object.keys(salidas)
+    if (!claves.length) { showToast('El nodo de origen no tiene campos que cargar', 'error'); return }
+    const body = claves.map(k => ({ key: k, type: 'text', value: salidas[k] !== undefined && salidas[k] !== null ? String(salidas[k]) : '' }))
     setConnCfg('body', body)
     showToast(`Payload cargado desde "${src.data?.label || 'nodo anterior'}"`)
   }
@@ -743,16 +778,16 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     if (readOnly) return
     const connNodes = nodes.filter(n => n.type === 'connector')
     if (!connNodes.length) { showToast('No hay acciones de conectores en este flujo', 'error'); return }
-    // Mapa de config por nodo para resolver referencias {campo} entre nodos.
-    const cfgById = {}
-    for (const n of connNodes) cfgById[n.id] = n.data?.config || {}
+    // Mapa de salidas por nodo (cualquier tipo) para resolver referencias {campo}.
+    const outputsById = {}
+    for (const n of nodes) outputsById[n.id] = getNodeOutputs(n)
 
     const nodesOut = connNodes.map(n => {
       const config = n.data?.config || {}
-      // Resolver referencias {campo} en el body de un nodo REST usando los
-      // config de los nodos que le conectan (predecesores).
+      // Resolver referencias {campo} en el body de un nodo REST usando las
+      // salidas de los nodos que le conectan (predecesores), sean del tipo que sean.
       if (n.data?.app === 'rest' && Array.isArray(config.body)) {
-        const pre = edges.filter(e => e.target === n.id).map(e => cfgById[e.source]).filter(Boolean)
+        const pre = edges.filter(e => e.target === n.id).map(e => outputsById[e.source]).filter(Boolean)
         const merged = Object.assign({}, ...pre)
         const body = config.body.map(item => {
           let v = item.value ?? ''
@@ -1091,13 +1126,13 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
           ) })()}
           {(() => {
             // Nodos que conectan HACIA este nodo conector: sus campos de salida
-            // se pueden referenciar en el payload con {campo}.
+            // se pueden referenciar en el payload con {campo}. Funciona con
+            // cualquier tipo de nodo (texto, HTML, figura, conector WLI).
             const predecesores = nodes.filter(n => edges.some(e => e.target === editingConnectorId && e.source === n.id))
             const referencias = []
             for (const p of predecesores) {
-              const def = CONNECTOR_ACTIONS.find(a => a.app === p.data?.app && a.action === p.data?.action)
-              const outs = def?.outputs || []
-              for (const o of outs) referencias.push({ nodo: p.data?.label || p.id, campo: o })
+              const outs = getNodeOutputs(p)
+              for (const o of Object.keys(outs)) referencias.push({ nodo: p.data?.label || p.id, campo: o })
             }
             const payloadPreview = (connConfig.body || []).reduce((acc, item) => {
               if (!item.key || !String(item.key).trim()) return acc
