@@ -136,9 +136,13 @@ function ConnectorNode({ data, selected }) {
         <span className="text-violet-500">{def?.icon || <Plug size={14} />}</span>
         <span className="text-xs font-semibold truncate flex-1">{label}</span>
         {data?.locked && <Lock size={12} className="text-amber-500" />}
-        {data?.status === 'sent' && <span className="text-[9px] bg-green-100 text-green-700 rounded-full px-1.5 py-0.5 shrink-0">enviado</span>}
-        {data?.status === 'error' && <span className="text-[9px] bg-red-100 text-red-700 rounded-full px-1.5 py-0.5 shrink-0">error</span>}
-        {data?.status !== 'sent' && data?.status !== 'error' && <span className="text-[9px] bg-gray-100 text-gray-500 rounded-full px-1.5 py-0.5 shrink-0">pendiente</span>}
+        {(data?.sent_count || 0) === 0 ? (
+          <span className="text-[9px] bg-gray-100 text-gray-500 rounded-full px-1.5 py-0.5 shrink-0">no enviado</span>
+        ) : (
+          <span className={`text-[9px] rounded-full px-1.5 py-0.5 shrink-0 ${data?.last_status === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+            enviado {data?.sent_count || 0} {(data?.sent_count || 0) === 1 ? 'vez' : 'veces'}
+          </span>
+        )}
       </div>
       <div className="text-[10px] text-gray-400 truncate mt-0.5">{(data?.app || '').toUpperCase()} · {data?.action || ''}</div>
       {fields.filter(f => cfg[f.key] !== undefined && cfg[f.key] !== null && String(cfg[f.key]).trim() !== '').length > 0 && (
@@ -695,17 +699,22 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     }
     const headers = construirHeaders(connConfig)
     setConnTesting(true); setConnTestResult(null)
+    let ok = false
     try {
       const opts = { method, headers }
       if (method !== 'GET' && method !== 'HEAD') opts.body = JSON.stringify(payload)
       const r = await fetch(url, opts)
       const cuerpo = await r.json().catch(() => null)
+      ok = r.ok
       setConnTestResult({ status: r.status, ok: r.ok, data: cuerpo, at: new Date().toISOString() })
     } catch (e) {
       setConnTestResult({ status: 0, ok: false, data: null, error: e.message, at: new Date().toISOString() })
     } finally {
       setConnTesting(false)
     }
+    // Cada envio es un intento: incrementa el contador y marca el ultimo estado.
+    setNodes(nds => nds.map(n => n.id === editingConnectorId ? { ...n, data: { ...n.data, sent_count: (n.data?.sent_count || 0) + 1, last_status: ok ? 'sent' : 'error' } } : n))
+    autoSave()
   }
   function saveShape() { if (!editingShapeId) return; setNodes(nds => nds.map(n => n.id === editingShapeId ? { ...n, data: { ...n.data, shape: shapeType, width: shapeW, height: shapeH, label: shapeLabel, fill: shapeFill, stroke: shapeStroke } } : n)); setEditingShapeId(null); autoSave() }
   function saveEdge() { if (!editingEdgeId) return; setEdges(eds => eds.map(e => e.id === editingEdgeId ? { ...e, label: edgeLabel || undefined, style: { ...e.style, stroke: edgeColor, strokeWidth: edgeWidth }, type: edgeType === 'default' ? undefined : edgeType, markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor } } : e)); setEditingEdgeId(null); autoSave() }
@@ -823,7 +832,6 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
         {!readOnly && <>
           <span className="text-xs" style={{ color: saveColor }}>{saveLabel}</span>
           <button onClick={() => save()} disabled={saving} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Save size={14} />Guardar</button>
-          <button onClick={publishFlow} disabled={publishing} style={{ ...s.btnPrimary, opacity: publishing ? 0.5 : 1 }}><Play size={14} />{publishing ? 'Publicando...' : 'Publicar'}</button>
         </>}
         <button onClick={handleExport} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Download size={14} />Exportar</button>
         {!readOnly && <button onClick={handleImport} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Upload size={14} />Importar</button>}
@@ -1114,7 +1122,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                       <Download size={12} /> Cargar payload del nodo anterior
                     </button>
                     <button type="button" onClick={probarConexion} disabled={connTesting} className="flex items-center gap-1.5 h-8 px-3 rounded-md border border-blue-200 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-50">
-                      {connTesting ? <RefreshCw size={12} className="animate-spin" /> : <Play size={12} />} {connTesting ? 'Probando...' : 'Probar conexión'}
+                      {connTesting ? <RefreshCw size={12} className="animate-spin" /> : <Play size={12} />} {connTesting ? 'Enviando...' : 'Enviar'}
                     </button>
                   </div>
                 )}
@@ -1153,9 +1161,9 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
             )
           })()}
           <p className="text-[11px] leading-relaxed text-gray-400">
-            Con el botón <strong>Publicar</strong> de arriba, wlo-flow reenvía esta acción a WLO
-            y WLO llama a {connApp.toUpperCase()} con estos datos (el secreto nunca sale del servidor).
-            El resultado de la campaña se muestra en pantalla.
+            Usa el botón <strong>Enviar</strong> para disparar la petición manualmente. Cada
+            envío queda registrado en el nodo como intento (no enviado / enviado N veces).
+            Los nodos WLI son plantillas y no se envían directo.
           </p>
         </div>
         <div className="flex justify-end gap-2 mt-4"><button onClick={() => setEditingConnectorId(null)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button><button onClick={saveConnector} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"><Save size={14} />Guardar</button></div>
