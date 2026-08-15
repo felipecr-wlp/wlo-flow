@@ -135,6 +135,9 @@ function ConnectorNode({ data, selected }) {
         <span className="text-violet-500">{def?.icon || <Plug size={14} />}</span>
         <span className="text-xs font-semibold truncate flex-1">{label}</span>
         {data?.locked && <Lock size={12} className="text-amber-500" />}
+        {data?.status === 'sent' && <span className="text-[9px] bg-green-100 text-green-700 rounded-full px-1.5 py-0.5 shrink-0">enviado</span>}
+        {data?.status === 'error' && <span className="text-[9px] bg-red-100 text-red-700 rounded-full px-1.5 py-0.5 shrink-0">error</span>}
+        {data?.status !== 'sent' && data?.status !== 'error' && <span className="text-[9px] bg-gray-100 text-gray-500 rounded-full px-1.5 py-0.5 shrink-0">pendiente</span>}
       </div>
       <div className="text-[10px] text-gray-400 truncate mt-0.5">{(data?.app || '').toUpperCase()} · {data?.action || ''}</div>
       {fields.filter(f => cfg[f.key] !== undefined && cfg[f.key] !== null && String(cfg[f.key]).trim() !== '').length > 0 && (
@@ -526,6 +529,8 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   const [connApp, setConnApp] = useState('wli'); const [connAction, setConnAction] = useState('emailer/create_campaign')
   const [connLabel, setConnLabel] = useState(''); const [connConfig, setConnConfig] = useState({})
   const [connHtmlPreview, setConnHtmlPreview] = useState(false)
+  const [connTestResult, setConnTestResult] = useState(null)
+  const [connTesting, setConnTesting] = useState(false)
   const [editingShapeId, setEditingShapeId] = useState(null)
   const [shapeW, setShapeW] = useState(160); const [shapeH, setShapeH] = useState(120)
   const [shapeLabel, setShapeLabel] = useState(''); const [shapeFill, setShapeFill] = useState('#f1f5f9')
@@ -648,6 +653,50 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   function saveConnector() { if (!editingConnectorId) return; setNodes(nds => nds.map(n => n.id === editingConnectorId ? { ...n, data: { ...n.data, app: connApp, action: connAction, label: connLabel, config: connConfig } } : n)); setEditingConnectorId(null); autoSave() }
   function cambiarAccionConector(action) { setConnAction(action); const def = CONNECTOR_ACTIONS.find(a => a.app === connApp && a.action === action); const cfg = {}; (def?.fields || []).forEach(f => { if (f.type === 'check') cfg[f.key] = false }); setConnConfig(cfg) }
   function setConnCfg(key, val) { setConnConfig(cfg => ({ ...cfg, [key]: val })) }
+  function predecesoresDe(nodeId) {
+    return nodes.filter(n => edges.some(e => e.target === nodeId && e.source === n.id))
+  }
+  function cargarPayload() {
+    // Toma el primer predecesor y copia sus valores de config al body.
+    const pre = predecesoresDe(editingConnectorId)
+    if (!pre.length) { showToast('Conecta primero un nodo de origen a este nodo REST', 'error'); return }
+    const src = pre[0]
+    const srcCfg = (src.data?.config && typeof src.data.config === 'object') ? src.data.config : {}
+    const salidas = Object.keys(srcCfg)
+    const body = salidas.map(k => ({ key: k, type: 'text', value: srcCfg[k] !== undefined && srcCfg[k] !== null ? String(srcCfg[k]) : '' }))
+    setConnCfg('body', body)
+    showToast(`Payload cargado desde "${src.data?.label || 'nodo anterior'}"`)
+  }
+  async function probarConexion() {
+    const url = String(connConfig.url || '').trim()
+    const method = String(connConfig.method || 'POST').trim().toUpperCase()
+    if (!/^https?:\/\//i.test(url)) { showToast('Falta la URL del endpoint', 'error'); return }
+    const payload = {}
+    for (const b of (Array.isArray(connConfig.body) ? connConfig.body : [])) {
+      if (!b || !b.key || !String(b.key).trim()) continue
+      const k = String(b.key).trim(); const raw = b.value ?? ''
+      if (b.type === 'number') payload[k] = Number(raw) || 0
+      else if (b.type === 'boolean') payload[k] = raw === true || raw === 'true' || raw === '1'
+      else if (b.type === 'array') { const t = String(raw).trim(); if (t.startsWith('[')) { try { payload[k] = JSON.parse(t) } catch { payload[k] = t.split(',').map(x => x.trim()) } } else payload[k] = t.split(',').map(x => x.trim()).filter(Boolean) }
+      else payload[k] = raw
+    }
+    const headers = { 'Content-Type': 'application/json' }
+    for (const h of (Array.isArray(connConfig.headers) ? connConfig.headers : [])) {
+      if (h && h.key && String(h.key).trim()) headers[String(h.key).trim()] = h.value ?? ''
+    }
+    setConnTesting(true); setConnTestResult(null)
+    try {
+      const opts = { method, headers }
+      if (method !== 'GET' && method !== 'HEAD') opts.body = JSON.stringify(payload)
+      const r = await fetch(url, opts)
+      const cuerpo = await r.json().catch(() => null)
+      setConnTestResult({ status: r.status, ok: r.ok, data: cuerpo, at: new Date().toISOString() })
+    } catch (e) {
+      setConnTestResult({ status: 0, ok: false, data: null, error: e.message, at: new Date().toISOString() })
+    } finally {
+      setConnTesting(false)
+    }
+  }
   function saveShape() { if (!editingShapeId) return; setNodes(nds => nds.map(n => n.id === editingShapeId ? { ...n, data: { ...n.data, shape: shapeType, width: shapeW, height: shapeH, label: shapeLabel, fill: shapeFill, stroke: shapeStroke } } : n)); setEditingShapeId(null); autoSave() }
   function saveEdge() { if (!editingEdgeId) return; setEdges(eds => eds.map(e => e.id === editingEdgeId ? { ...e, label: edgeLabel || undefined, style: { ...e.style, stroke: edgeColor, strokeWidth: edgeWidth }, type: edgeType === 'default' ? undefined : edgeType, markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor } } : e)); setEditingEdgeId(null); autoSave() }
   function toggleLock(nodeId) { setNodes(nds => nds.map(n => n.id === nodeId ? { ...n, data: { ...n.data, locked: !n.data?.locked } } : n)); autoSave(); setCtxMenu(null) }
@@ -708,6 +757,13 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
       const arr = body && Array.isArray(body.results) ? body.results : []
       setPublishResult(arr)
       setPublishError(!body || typeof body !== 'object' ? `No se pudo publicar (HTTP ${r.status})` : (body.error || null))
+      // Marcar el estado de cada nodo conector segun su resultado.
+      if (arr.length) {
+        const statusById = {}
+        for (const res of arr) statusById[res.node_id] = res.ok ? 'sent' : 'error'
+        setNodes(nds => nds.map(n => (statusById[n.id] ? { ...n, data: { ...n.data, status: statusById[n.id] } } : n)))
+        autoSave()
+      }
       if (arr.length && arr.every(x => x.ok)) showToast('Campaña publicada')
       else if (arr.length) showToast('Hubo errores al publicar', 'error')
     } catch (e) {
@@ -867,22 +923,30 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
         </div>
         <div className="flex justify-end gap-2 mt-4"><button onClick={() => setEditingShapeId(null)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button><button onClick={saveShape} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"><Save size={14} />Guardar</button></div>
       </Modal>}
-      {editingConnectorId && <Modal onClose={() => setEditingConnectorId(null)} title="Acción de comunicación">
+      {editingConnectorId && <Modal onClose={() => setEditingConnectorId(null)} title={connApp === 'rest' ? 'Conexión REST' : 'Acción de comunicación'}>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">Conexión</label>
-              <select value={connApp} onChange={e => { const app = e.target.value; setConnApp(app); const first = CONNECTOR_ACTIONS.find(a => a.app === app); if (first) cambiarAccionConector(first.action) }} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200">
-                {CONNECTOR_APPS.map(a => <option key={a} value={a}>{a.toUpperCase()}</option>)}
-              </select>
+          {connApp === 'rest' ? (
+            <div className="flex items-center gap-2 rounded-md border px-3 py-2" style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+              <Plug size={14} className="text-violet-500" />
+              <span className="text-sm font-medium">API REST</span>
+              <span className="text-[11px] text-gray-400">conexión directa a un endpoint</span>
             </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">Acción</label>
-              <select value={connAction} onChange={e => cambiarAccionConector(e.target.value)} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200">
-                {CONNECTOR_ACTIONS.filter(a => a.app === connApp).map(a => <option key={a.action} value={a.action}>{a.label}</option>)}
-              </select>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Conexión</label>
+                <select value={connApp} onChange={e => { const app = e.target.value; setConnApp(app); const first = CONNECTOR_ACTIONS.find(a => a.app === app); if (first) cambiarAccionConector(first.action) }} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200">
+                  {CONNECTOR_APPS.filter(a => a !== 'rest').map(a => <option key={a} value={a}>{a.toUpperCase()}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Acción</label>
+                <select value={connAction} onChange={e => cambiarAccionConector(e.target.value)} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200">
+                  {CONNECTOR_ACTIONS.filter(a => a.app === connApp).map(a => <option key={a.action} value={a.action}>{a.label}</option>)}
+                </select>
+              </div>
             </div>
-          </div>
+          )}
           <div>
             <label className="text-xs font-medium text-gray-500 mb-1 block">Nombre del nodo</label>
             <input value={connLabel} onChange={e => setConnLabel(e.target.value)} placeholder={CONNECTOR_ACTIONS.find(a => a.action === connAction)?.label || 'Acción'} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" />
@@ -994,9 +1058,32 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
             }, {})
             return (
               <div className="space-y-2">
+                {connApp === 'rest' && (
+                  <div className="flex gap-2">
+                    <button type="button" onClick={cargarPayload} className="flex items-center gap-1.5 h-8 px-3 rounded-md border border-violet-200 text-xs text-violet-700 hover:bg-violet-50">
+                      <Download size={12} /> Cargar payload del nodo anterior
+                    </button>
+                    <button type="button" onClick={probarConexion} disabled={connTesting} className="flex items-center gap-1.5 h-8 px-3 rounded-md border border-blue-200 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-50">
+                      {connTesting ? <RefreshCw size={12} className="animate-spin" /> : <Play size={12} />} {connTesting ? 'Probando...' : 'Probar conexión'}
+                    </button>
+                  </div>
+                )}
+                {connTestResult && (
+                  <div className={`rounded-md border p-2 ${connTestResult.ok ? '' : ''}`} style={{ borderColor: connTestResult.ok ? '#bbf7d0' : '#fecaca', background: connTestResult.ok ? '#f0fdf4' : '#fef2f2' }}>
+                    <div className="flex items-center gap-2 text-xs">
+                      {connTestResult.ok ? <Check size={14} style={{ color: '#16a34a' }} /> : <AlertTriangle size={14} style={{ color: '#dc2626' }} />}
+                      <span className={`font-medium ${connTestResult.ok ? 'text-green-700' : 'text-red-700'}`}>
+                        {connTestResult.status === 0 ? 'Error de conexión' : `HTTP ${connTestResult.status}`}
+                      </span>
+                      <span className="text-[10px] text-gray-400 ml-auto">{fmtDate(connTestResult.at)}</span>
+                    </div>
+                    {connTestResult.error && <div className="text-[11px] text-red-600 mt-1">{connTestResult.error}</div>}
+                    {connTestResult.data && <pre className="mt-1 text-[10px] font-mono whitespace-pre-wrap break-all max-h-32 overflow-auto" style={{ color: '#374151' }}>{JSON.stringify(connTestResult.data, null, 2)}</pre>}
+                  </div>
+                )}
                 {referencias.length > 0 && (
                   <div className="rounded-md border p-2" style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
-                    <div className="text-[11px] font-medium text-gray-500 mb-1">Campos disponibles del nodo anterior (usa {'{campo}'}):</div>
+                    <div className="text-[11px] font-medium text-gray-500 mb-1">Campos disponibles del nodo anterior:</div>
                     <div className="flex flex-wrap gap-1">
                       {referencias.map((r, i) => (
                         <button key={i} type="button" onClick={() => { setConnCfg('body', [...(connConfig.body || []), { key: r.campo, type: 'text', value: `{${r.campo}}` }]) }} className="text-[10px] font-mono bg-white border border-gray-200 rounded px-1.5 py-0.5 text-gray-600 hover:border-blue-400 hover:text-blue-600" title={`${r.nodo} -> ${r.campo}`}>
