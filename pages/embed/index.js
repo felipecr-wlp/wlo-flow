@@ -840,6 +840,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
           title={`Parametros recibidos del embed:\n${JSON.stringify(embedInfo, null, 2)}`}
           style={{ fontSize: 10, color: '#64748b', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240, cursor: 'help' }}
         >embed: {embedInfo.enmarcado ? 'iframe' : 'standalone'} · {modo}</div>
+        <button onClick={onBack} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm" title="Volver al listado de flujos"><ListIcon size={14} />Flujos</button>
       </header>
       {!readOnly && <div className="flex items-center gap-1 px-2 py-1 border-b bg-gray-50 shrink-0">
         <button onClick={() => setTopBarCollapsed(!topBarCollapsed)} className="p-1 hover:bg-gray-200 rounded text-gray-500"><ChevronDown size={14} className={`transition-transform ${topBarCollapsed ? '-rotate-90' : ''}`} /></button>
