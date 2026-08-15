@@ -1139,7 +1139,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                     {connTestResult.data && <pre className="mt-1 text-[10px] font-mono whitespace-pre-wrap break-all max-h-32 overflow-auto" style={{ color: '#374151' }}>{JSON.stringify(connTestResult.data, null, 2)}</pre>}
                   </div>
                 )}
-                {referencias.length > 0 && (
+                {connApp === 'rest' && referencias.length > 0 && (
                   <div className="rounded-md border p-2" style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
                     <div className="text-[11px] font-medium text-gray-500 mb-1">Campos disponibles del nodo anterior:</div>
                     <div className="flex flex-wrap gap-1">
@@ -1151,7 +1151,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                     </div>
                   </div>
                 )}
-                {(connConfig.body || []).length > 0 && (
+                {connApp === 'rest' && (connConfig.body || []).length > 0 && (
                   <div>
                     <div className="text-[11px] font-medium text-gray-500 mb-1">Payload que se enviará:</div>
                     <pre className="rounded-md border p-2 text-[10px] font-mono whitespace-pre-wrap break-all" style={{ borderColor: '#e2e8f0', background: '#0f172a', color: '#a5f3fc' }}>{JSON.stringify(payloadPreview, null, 2)}</pre>
@@ -1161,9 +1161,11 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
             )
           })()}
           <p className="text-[11px] leading-relaxed text-gray-400">
-            Usa el botón <strong>Enviar</strong> para disparar la petición manualmente. Cada
-            envío queda registrado en el nodo como intento (no enviado / enviado N veces).
-            Los nodos WLI son plantillas y no se envían directo.
+            {connApp === 'rest' ? (
+              <>Usa el botón <strong>Enviar</strong> para disparar la petición manualmente. Cada envío queda registrado en el nodo como intento (no enviado / enviado N veces).</>
+            ) : (
+              <>Este nodo es una plantilla para maquetar contenido. Conectalo a un nodo <strong>API REST</strong> para enviar sus datos.</>
+            )}
           </p>
         </div>
         <div className="flex justify-end gap-2 mt-4"><button onClick={() => setEditingConnectorId(null)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button><button onClick={saveConnector} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"><Save size={14} />Guardar</button></div>
