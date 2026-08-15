@@ -757,9 +757,9 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
       }
       return { id: n.id, label: n.data?.label || '', app: n.data?.app || '', action: n.data?.action || '', config }
     })
-    const campanas = nodesOut.filter(n => n.action === 'emailer/create_campaign')
-    const faltantes = campanas.filter(n => !String(n.config?.html || '').trim())
-    if (faltantes.length) { showToast('Falta el HTML de la campaña en un nodo', 'error'); return }
+    // Los nodos WLI son plantillas: no se envian. Solo se publican los REST.
+    const restNodes = nodesOut.filter(n => n.app === 'rest')
+    if (!restNodes.length) { showToast('No hay nodos REST para publicar. Los nodos WLI son solo plantillas.', 'error'); return }
     setPublishing(true)
     try {
       const r = await fetch('/api/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workspace_id: wsId, flow_id: flowId, title, connector_nodes: nodesOut }) })
