@@ -38,6 +38,7 @@ const CONNECTOR_ACTIONS = [
       { key: 'list_id', label: 'ID de la base (lista) (opcional)' },
       { key: 'send', label: 'Enviar de inmediato (si no, queda en borrador)', type: 'check' },
     ],
+    outputs: ['title', 'subject', 'html', 'list_id'],
   },
   {
     app: 'wli', action: 'emailer/enroll_contact', label: 'Enrolar contacto', icon: <UserPlus size={14} />,
@@ -45,19 +46,22 @@ const CONNECTOR_ACTIONS = [
       { key: 'sequence_id', label: 'ID de secuencia' },
       { key: 'email', label: 'Email o {email_tarea}' },
     ],
+    outputs: ['sequence_id', 'email'],
   },
   {
     app: 'wli', action: 'emailer/list_sequences', label: 'Listar secuencias', icon: <ListIcon size={14} />,
     fields: [
       { key: 'solo_activas', label: 'Solo activas', type: 'check' },
     ],
+    outputs: ['sequences'],
   },
   {
     app: 'rest', action: 'webhook', label: 'Enviar a API REST', icon: <Plug size={14} />,
     fields: [
       { key: 'url', label: 'URL del endpoint' },
-      { key: 'method', label: 'Método', type: 'select', options: ['POST', 'PUT', 'PATCH', 'GET'] },
-      { key: 'payload', label: 'Payload (campo -> valor)', type: 'fields' },
+      { key: 'method', label: 'Método', type: 'select', options: ['POST', 'PUT', 'PATCH', 'DELETE', 'GET'] },
+      { key: 'headers', label: 'Headers (clave -> valor)', type: 'fields' },
+      { key: 'body', label: 'Body / payload (campo -> valor o referencia)', type: 'typed' },
     ],
   },
 ]
@@ -672,7 +676,28 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     if (readOnly) return
     const connNodes = nodes.filter(n => n.type === 'connector')
     if (!connNodes.length) { showToast('No hay acciones de conectores en este flujo', 'error'); return }
-    const nodesOut = connNodes.map(n => ({ id: n.id, label: n.data?.label || '', app: n.data?.app || '', action: n.data?.action || '', config: n.data?.config || {} }))
+    // Mapa de config por nodo para resolver referencias {campo} entre nodos.
+    const cfgById = {}
+    for (const n of connNodes) cfgById[n.id] = n.data?.config || {}
+
+    const nodesOut = connNodes.map(n => {
+      const config = n.data?.config || {}
+      // Resolver referencias {campo} en el body de un nodo REST usando los
+      // config de los nodos que le conectan (predecesores).
+      if (n.data?.app === 'rest' && Array.isArray(config.body)) {
+        const pre = edges.filter(e => e.target === n.id).map(e => cfgById[e.source]).filter(Boolean)
+        const merged = Object.assign({}, ...pre)
+        const body = config.body.map(item => {
+          let v = item.value ?? ''
+          if (typeof v === 'string' && v.includes('{')) {
+            v = v.replace(/\{([^}]+)\}/g, (_, campo) => (merged[campo] !== undefined ? String(merged[campo]) : ''))
+          }
+          return { ...item, value: v }
+        })
+        return { id: n.id, label: n.data?.label || '', app: n.data?.app || '', action: n.data?.action || '', config: { ...config, body } }
+      }
+      return { id: n.id, label: n.data?.label || '', app: n.data?.app || '', action: n.data?.action || '', config }
+    })
     const campanas = nodesOut.filter(n => n.action === 'emailer/create_campaign')
     const faltantes = campanas.filter(n => !String(n.config?.html || '').trim())
     if (faltantes.length) { showToast('Falta el HTML de la campaña en un nodo', 'error'); return }
@@ -892,6 +917,26 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                       <button type="button" onClick={() => setConnCfg(f.key, [...(connConfig[f.key] || []), { key: '', value: '' }])} className="w-full flex items-center justify-center gap-1.5 h-8 rounded-md border border-dashed hover:bg-gray-50 text-xs text-gray-500"><Plus size={12} />Agregar campo</button>
                     </div>
                   </div>
+                ) : f.type === 'typed' ? (
+                  <div key={f.key}>
+                    <label className="text-[11px] text-gray-400 block mb-1">{f.label}</label>
+                    <div className="space-y-1.5">
+                      {(connConfig[f.key] || []).map((item, i) => (
+                        <div key={i} className="flex gap-1.5 items-start">
+                          <input value={item.key || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], key: e.target.value }; setConnCfg(f.key, arr) }} placeholder="campo" className="w-[30%] h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                          <select value={item.type || 'text'} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], type: e.target.value }; setConnCfg(f.key, arr) }} className="w-[22%] h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200">
+                            <option value="text">texto</option>
+                            <option value="number">numero</option>
+                            <option value="boolean">booleano</option>
+                            <option value="array">array</option>
+                          </select>
+                          <input value={item.value || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], value: e.target.value }; setConnCfg(f.key, arr) }} placeholder={item.type === 'array' ? '[1,2,3] o {campo}' : 'valor o {campo}'} className="flex-1 h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                          <button type="button" title="Quitar" onClick={() => setConnCfg(f.key, (connConfig[f.key] || []).filter((_, j) => j !== i))} className="w-8 h-8 rounded-md border hover:bg-gray-50 text-gray-400 flex items-center justify-center shrink-0"><X size={12} /></button>
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => setConnCfg(f.key, [...(connConfig[f.key] || []), { key: '', type: 'text', value: '' }])} className="w-full flex items-center justify-center gap-1.5 h-8 rounded-md border border-dashed hover:bg-gray-50 text-xs text-gray-500"><Plus size={12} />Agregar campo al payload</button>
+                    </div>
+                  </div>
                 ) : (
                   <div key={f.key}>
                     <div className="flex items-center justify-between mb-0.5">
@@ -923,6 +968,53 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
               </div>
             </div>
           ) })()}
+          {(() => {
+            // Nodos que conectan HACIA este nodo conector: sus campos de salida
+            // se pueden referenciar en el payload con {campo}.
+            const predecesores = nodes.filter(n => edges.some(e => e.target === editingConnectorId && e.source === n.id))
+            const referencias = []
+            for (const p of predecesores) {
+              const def = CONNECTOR_ACTIONS.find(a => a.app === p.data?.app && a.action === p.data?.action)
+              const outs = def?.outputs || []
+              for (const o of outs) referencias.push({ nodo: p.data?.label || p.id, campo: o })
+            }
+            const payloadPreview = (connConfig.body || []).reduce((acc, item) => {
+              if (!item.key || !String(item.key).trim()) return acc
+              const k = String(item.key).trim()
+              const v = item.value || ''
+              if (item.type === 'number') acc[k] = Number(v) || 0
+              else if (item.type === 'boolean') acc[k] = v === 'true' || v === '1'
+              else if (item.type === 'array') {
+                const t = v.trim()
+                if (t.startsWith('[')) { try { acc[k] = JSON.parse(t) } catch { acc[k] = v.split(',').map(x => x.trim()) } }
+                else if (t.startsWith('{')) acc[k] = t
+                else acc[k] = t.split(',').map(x => x.trim()).filter(Boolean)
+              } else acc[k] = v
+              return acc
+            }, {})
+            return (
+              <div className="space-y-2">
+                {referencias.length > 0 && (
+                  <div className="rounded-md border p-2" style={{ borderColor: '#e2e8f0', background: '#f8fafc' }}>
+                    <div className="text-[11px] font-medium text-gray-500 mb-1">Campos disponibles del nodo anterior (usa {'{campo}'}):</div>
+                    <div className="flex flex-wrap gap-1">
+                      {referencias.map((r, i) => (
+                        <button key={i} type="button" onClick={() => { setConnCfg('body', [...(connConfig.body || []), { key: r.campo, type: 'text', value: `{${r.campo}}` }]) }} className="text-[10px] font-mono bg-white border border-gray-200 rounded px-1.5 py-0.5 text-gray-600 hover:border-blue-400 hover:text-blue-600" title={`${r.nodo} -> ${r.campo}`}>
+                          {'{'}{r.campo}{'}'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(connConfig.body || []).length > 0 && (
+                  <div>
+                    <div className="text-[11px] font-medium text-gray-500 mb-1">Payload que se enviará:</div>
+                    <pre className="rounded-md border p-2 text-[10px] font-mono whitespace-pre-wrap break-all" style={{ borderColor: '#e2e8f0', background: '#0f172a', color: '#a5f3fc' }}>{JSON.stringify(payloadPreview, null, 2)}</pre>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
           <p className="text-[11px] leading-relaxed text-gray-400">
             Con el botón <strong>Publicar</strong> de arriba, wlo-flow reenvía esta acción a WLO
             y WLO llama a {connApp.toUpperCase()} con estos datos (el secreto nunca sale del servidor).

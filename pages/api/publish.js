@@ -49,9 +49,24 @@ export default async function handler(req, res) {
       const config = node.config && typeof node.config === 'object' ? node.config : {}
       const url = String(config.url || '').trim()
       const method = String(config.method || 'POST').trim().toUpperCase()
+      // Body tipado: cada campo puede ser texto, numero, booleano o array.
       const payload = {}
-      for (const p of (Array.isArray(config.payload) ? config.payload : [])) {
-        if (p && p.key && String(p.key).trim()) payload[String(p.key).trim()] = p.value ?? ''
+      for (const b of (Array.isArray(config.body) ? config.body : [])) {
+        if (!b || !b.key || !String(b.key).trim()) continue
+        const k = String(b.key).trim()
+        const raw = b.value ?? ''
+        if (b.type === 'number') payload[k] = Number(raw) || 0
+        else if (b.type === 'boolean') payload[k] = raw === true || raw === 'true' || raw === '1'
+        else if (b.type === 'array') {
+          const t = String(raw).trim()
+          if (t.startsWith('[')) { try { payload[k] = JSON.parse(t) } catch { payload[k] = t.split(',').map(x => x.trim()) } }
+          else payload[k] = t.split(',').map(x => x.trim()).filter(Boolean)
+        } else payload[k] = raw
+      }
+      // Headers configurables.
+      const headers = { 'Content-Type': 'application/json' }
+      for (const h of (Array.isArray(config.headers) ? config.headers : [])) {
+        if (h && h.key && String(h.key).trim()) headers[String(h.key).trim()] = h.value ?? ''
       }
       if (!/^https?:\/\//i.test(url)) {
         results.push({ node_id: node.id, label: node.label, action: node.action, ok: false, status: 422, error: 'Falta la URL del endpoint' })
@@ -62,11 +77,11 @@ export default async function handler(req, res) {
       try {
         const opts = {
           method,
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           signal: control.signal,
           redirect: 'manual',
         }
-        if (method !== 'GET') opts.body = JSON.stringify(payload)
+        if (method !== 'GET' && method !== 'HEAD') opts.body = JSON.stringify(payload)
         const r = await fetch(url, opts)
         const cuerpo = await r.json().catch(() => null)
         results.push({
