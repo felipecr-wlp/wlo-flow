@@ -135,13 +135,13 @@ function ConnectorNode({ data, selected }) {
         <span className="text-violet-500">{def?.icon || <Plug size={14} />}</span>
         <span className="text-xs font-semibold truncate flex-1">{label}</span>
         {data?.locked && <Lock size={12} className="text-amber-500" />}
-        {(data?.sent_count || 0) === 0 ? (
+        {data?.app === 'rest' && ((data?.sent_count || 0) === 0 ? (
           <span className="text-[9px] bg-gray-100 text-gray-500 rounded-full px-1.5 py-0.5 shrink-0">no enviado</span>
         ) : (
           <span className={`text-[9px] rounded-full px-1.5 py-0.5 shrink-0 ${data?.last_status === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
             enviado {data?.sent_count || 0} {(data?.sent_count || 0) === 1 ? 'vez' : 'veces'}
           </span>
-        )}
+        ))}
       </div>
       <div className="text-[10px] text-gray-400 truncate mt-0.5">{(data?.app || '').toUpperCase()} · {data?.action || ''}</div>
       {fields.filter(f => cfg[f.key] !== undefined && cfg[f.key] !== null && String(cfg[f.key]).trim() !== '').length > 0 && (
