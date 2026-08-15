@@ -52,6 +52,14 @@ const CONNECTOR_ACTIONS = [
       { key: 'solo_activas', label: 'Solo activas', type: 'check' },
     ],
   },
+  {
+    app: 'rest', action: 'webhook', label: 'Enviar a API REST', icon: <Plug size={14} />,
+    fields: [
+      { key: 'url', label: 'URL del endpoint' },
+      { key: 'method', label: 'Método', type: 'select', options: ['POST', 'PUT', 'PATCH', 'GET'] },
+      { key: 'payload', label: 'Payload (campo -> valor)', type: 'fields' },
+    ],
+  },
 ]
 const CONNECTOR_APPS = [...new Set(CONNECTOR_ACTIONS.map(a => a.app))]
 
@@ -863,6 +871,27 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                     <input type="checkbox" checked={!!connConfig[f.key]} onChange={e => setConnCfg(f.key, e.target.checked)} className="w-4 h-4" />
                     {f.label}
                   </label>
+                ) : f.type === 'select' ? (
+                  <div key={f.key}>
+                    <label className="text-[11px] text-gray-400 block mb-0.5">{f.label}</label>
+                    <select value={connConfig[f.key] || 'POST'} onChange={e => setConnCfg(f.key, e.target.value)} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200">
+                      {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                ) : f.type === 'fields' ? (
+                  <div key={f.key}>
+                    <label className="text-[11px] text-gray-400 block mb-1">{f.label}</label>
+                    <div className="space-y-1.5">
+                      {(connConfig[f.key] || []).map((item, i) => (
+                        <div key={i} className="flex gap-1.5">
+                          <input value={item.key || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], key: e.target.value }; setConnCfg(f.key, arr) }} placeholder="campo" className="w-2/5 h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                          <input value={item.value || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], value: e.target.value }; setConnCfg(f.key, arr) }} placeholder="valor" className="flex-1 h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                          <button type="button" title="Quitar campo" onClick={() => setConnCfg(f.key, (connConfig[f.key] || []).filter((_, j) => j !== i))} className="w-8 h-8 rounded-md border hover:bg-gray-50 text-gray-400 flex items-center justify-center shrink-0"><X size={12} /></button>
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => setConnCfg(f.key, [...(connConfig[f.key] || []), { key: '', value: '' }])} className="w-full flex items-center justify-center gap-1.5 h-8 rounded-md border border-dashed hover:bg-gray-50 text-xs text-gray-500"><Plus size={12} />Agregar campo</button>
+                    </div>
+                  </div>
                 ) : (
                   <div key={f.key}>
                     <div className="flex items-center justify-between mb-0.5">
@@ -884,7 +913,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                       <textarea
                         value={connConfig[f.key] !== undefined && connConfig[f.key] !== null ? String(connConfig[f.key]) : ''}
                         onChange={e => setConnCfg(f.key, e.target.value)}
-                        placeholder={f.key === 'html' ? '<p>Hola {nombre}, …</p>' : f.key === 'email' ? '{email_tarea} o correo fijo' : f.key === 'list_id' ? 'Si no lo pones, se elige la base al crear la campaña' : ''}
+                        placeholder={f.key === 'html' ? '<p>Hola {nombre}, …</p>' : f.key === 'email' ? '{email_tarea} o correo fijo' : f.key === 'url' ? 'https://api.ejemplo.com/webhook' : f.key === 'list_id' ? 'Si no lo pones, se elige la base al crear la campaña' : ''}
                         rows={f.key === 'html' ? 5 : 1}
                         className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 font-mono resize-y"
                       />

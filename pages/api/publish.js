@@ -44,6 +44,48 @@ export default async function handler(req, res) {
 
   const results = []
   for (const node of connector_nodes) {
+    // Los nodos REST se envian directo a su URL, no pasan por WLO.
+    if (node.app === 'rest') {
+      const config = node.config && typeof node.config === 'object' ? node.config : {}
+      const url = String(config.url || '').trim()
+      const method = String(config.method || 'POST').trim().toUpperCase()
+      const payload = {}
+      for (const p of (Array.isArray(config.payload) ? config.payload : [])) {
+        if (p && p.key && String(p.key).trim()) payload[String(p.key).trim()] = p.value ?? ''
+      }
+      if (!/^https?:\/\//i.test(url)) {
+        results.push({ node_id: node.id, label: node.label, action: node.action, ok: false, status: 422, error: 'Falta la URL del endpoint' })
+        continue
+      }
+      const control = new AbortController()
+      const reloj = setTimeout(() => control.abort(), 15000)
+      try {
+        const opts = {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          signal: control.signal,
+          redirect: 'manual',
+        }
+        if (method !== 'GET') opts.body = JSON.stringify(payload)
+        const r = await fetch(url, opts)
+        const cuerpo = await r.json().catch(() => null)
+        results.push({
+          node_id: node.id,
+          label: node.label,
+          action: node.action,
+          ok: r.ok,
+          status: r.status,
+          data: cuerpo,
+          error: r.ok ? null : (cuerpo?.error || `Fallo la llamada REST (${r.status})`),
+        })
+      } catch (e) {
+        results.push({ node_id: node.id, label: node.label, action: node.action, ok: false, status: 502, error: e.name === 'AbortError' ? 'El endpoint no respondio a tiempo.' : 'No se pudo contactar el endpoint REST.' })
+      } finally {
+        clearTimeout(reloj)
+      }
+      continue
+    }
+
     const map = RELAY_MAP[node.action]
     if (!map) {
       results.push({
