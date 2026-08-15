@@ -3,6 +3,7 @@ import Head from 'next/head'
 import {
   ReactFlow, Controls, Background, MiniMap, useNodesState, useEdgesState,
   addEdge, BackgroundVariant, Handle, Position, MarkerType, useReactFlow,
+  NodeResizer,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
@@ -72,12 +73,15 @@ function fmtDate(iso) {
   return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
 }
 
-function CustomNode({ data, selected }) {
+function CustomNode({ data, selected, id }) {
   const ct = data?.content?.contentType || 'text'
   const color = data?.color || ''
+  const { resizeNode, resizeNodeEnd } = useContext(FlowContext) || {}
+  const nodeW = data?.width || 200
   const borderColor = selected ? '#3b82f6' : color || '#e2e8f0'
   return (
-    <div className="bg-white border-2 rounded-lg px-3 py-2 shadow-sm min-w-[160px] max-w-[240px]" style={{ borderColor, opacity: data?.locked ? 0.7 : 1, ...(selected ? { boxShadow: '0 0 0 2px rgba(59,130,246,.35)' } : {}) }}>
+    <div className="bg-white border-2 rounded-lg px-3 py-2 shadow-sm" style={{ width: nodeW, maxWidth: 'none', borderColor, opacity: data?.locked ? 0.7 : 1, ...(selected ? { boxShadow: '0 0 0 2px rgba(59,130,246,.35)' } : {}) }}>
+      {selected && <NodeResizer isVisible={selected} minWidth={120} minHeight={36} onResize={(ev, params) => resizeNode?.(id, params.width, params.height)} onResizeEnd={() => resizeNodeEnd?.()} />}
       <Handle type="target" position={Position.Top} className="!bg-gray-400" />
       <div className="flex items-center gap-2">
         <span className="text-blue-500 shrink-0">{NI[ct]}</span>
@@ -89,13 +93,15 @@ function CustomNode({ data, selected }) {
   )
 }
 
-function ShapeNode({ data, selected }) {
+function ShapeNode({ data, selected, id }) {
   const s = data?.shape || 'rect'; const w = data?.width || 160; const h = data?.height || 120
   const fill = data?.fill || '#f1f5f9'; const stroke = data?.stroke || '#64748b'
   const label = data?.label || ''; const rows = data?.rows || 3; const cols = data?.cols || 3
+  const { resizeNode, resizeNodeEnd } = useContext(FlowContext) || {}
   const sel = selected ? { outline: '2px solid #3b82f6', outlineOffset: '2px' } : {}
   const L = label ? <text x={w / 2} y={h / 2} textAnchor="middle" dominantBaseline="central" fill="#334155" fontSize={13} fontWeight={500} fontFamily="system-ui, sans-serif" style={{ pointerEvents: 'none' }}>{label}</text> : null
   return <div style={{ width: w, height: h, ...sel, opacity: data?.locked ? 0.6 : 1, position: 'relative' }}>
+    {selected && <NodeResizer isVisible={selected} minWidth={40} minHeight={30} onResize={(ev, params) => resizeNode?.(id, params.width, params.height)} onResizeEnd={() => resizeNodeEnd?.()} />}
     {s === 'circle' && <svg width={w} height={h}><ellipse cx={w / 2} cy={h / 2} rx={w / 2 - 2} ry={h / 2 - 2} fill={fill} stroke={stroke} strokeWidth={2} />{L}</svg>}
     {s === 'line' && <svg width={w} height={h}><line x1={0} y1={h / 2} x2={w} y2={h / 2} stroke={stroke} strokeWidth={3} /><polygon points={`${w - 8},${h / 2 - 5} ${w},${h / 2} ${w - 8},${h / 2 + 5}`} fill={stroke} />{L}</svg>}
     {s === 'grid' && (() => { const cw = w / cols, rh = h / rows; const ls = []; for (let i = 1; i < cols; i++) ls.push(<line key={`v${i}`} x1={i * cw} y1={0} x2={i * cw} y2={h} stroke={stroke} strokeWidth={1} strokeDasharray="4 2" />); for (let i = 1; i < rows; i++) ls.push(<line key={`h${i}`} x1={0} y1={i * rh} x2={w} y2={i * rh} stroke={stroke} strokeWidth={1} strokeDasharray="4 2" />); return <svg width={w} height={h}><rect x={0} y={0} width={w} height={h} fill={fill} stroke={stroke} strokeWidth={2} rx={2} />{ls}{L}</svg> })()}
@@ -597,6 +603,12 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     },
     removeField: (id, idx) => {
       setNodes(nds => nds.map(n => n.id === id ? { ...n, data: { ...n.data, fields: (Array.isArray(n.data?.fields) ? n.data.fields : []).filter((_, j) => j !== idx) } } : n))
+      autoSave()
+    },
+    resizeNode: (id, w, h) => {
+      setNodes(nds => nds.map(n => n.id === id ? { ...n, data: { ...n.data, width: Math.round(w), height: Math.round(h) } } : n))
+    },
+    resizeNodeEnd: () => {
       autoSave()
     },
   }
