@@ -36,7 +36,6 @@ const CONNECTOR_ACTIONS = [
       { key: 'subject', label: 'Asunto del correo' },
       { key: 'html', label: 'HTML de la campaña' },
       { key: 'list_id', label: 'ID de la base (lista) (opcional)' },
-      { key: 'send', label: 'Enviar de inmediato (si no, queda en borrador)', type: 'check' },
     ],
     outputs: ['title', 'subject', 'html', 'list_id'],
   },
