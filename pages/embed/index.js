@@ -735,12 +735,21 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     setConnTesting(true); setConnTestResult(null)
     let ok = false
     try {
-      const opts = { method, headers }
-      if (method !== 'GET' && method !== 'HEAD') opts.body = JSON.stringify(payload)
-      const r = await fetch(url, opts)
-      const cuerpo = await r.json().catch(() => null)
-      ok = r.ok
-      setConnTestResult({ status: r.status, ok: r.ok, data: cuerpo, at: new Date().toISOString() })
+      // El envio va por el SERVIDOR para evitar el bloqueo CORS del navegador.
+      const r = await fetch('/api/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, method, headers, body: payload }),
+      })
+      const res = await r.json().catch(() => null)
+      ok = !!res?.ok
+      setConnTestResult({
+        status: res?.status ?? 0,
+        ok: !!res?.ok,
+        data: res?.data ?? null,
+        error: res?.error || null,
+        at: new Date().toISOString(),
+      })
     } catch (e) {
       setConnTestResult({ status: 0, ok: false, data: null, error: e.message, at: new Date().toISOString() })
     } finally {
