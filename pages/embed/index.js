@@ -38,7 +38,7 @@ const CONNECTOR_ACTIONS = [
       { key: 'list_names', label: 'Listas por nombre (separadas por coma)' },
       { key: 'list_ids', label: 'IDs de lista (separados por coma)' },
       { key: 'segment_categorias', label: 'Segmentos por categoria (separados por coma)' },
-      { key: 'segment_temperaturas', label: 'Temperaturas: caliente, tibio, frio, congelado, sin_enviar' },
+      { key: 'segment_temperaturas', label: 'Temperaturas (multi-seleccion)', type: 'multiselect', options: ['caliente', 'tibio', 'frio', 'congelado', 'sin_enviar'] },
       { key: 'from_email', label: 'Email remitente (opcional)' },
       { key: 'from_name', label: 'Nombre remitente (opcional)' },
       { key: 'reply_to', label: 'Responder a (opcional)' },
@@ -73,6 +73,9 @@ const CONNECTOR_ACTIONS = [
   },
 ]
 const CONNECTOR_APPS = [...new Set(CONNECTOR_ACTIONS.map(a => a.app))]
+
+// Nombres de campo que SIEMPRE deben ir como array en el payload REST.
+const ARRAY_FIELD_NAMES = ['list_names', 'list_ids', 'segment_categorias', 'segment_temperaturas']
 
 /**
  * Devuelve un objeto plano campo -> valor con los "outputs" de cualquier nodo.
@@ -1048,6 +1051,29 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                       {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
                   </div>
+                ) : f.type === 'multiselect' ? (
+                  <div key={f.key}>
+                    <label className="text-[11px] text-gray-400 block mb-0.5">{f.label}</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(f.options || []).map(o => {
+                        const activos = String(connConfig[f.key] || '').split(',').map(x => x.trim()).filter(Boolean)
+                        const activo = activos.includes(o)
+                        return (
+                          <button
+                            key={o}
+                            type="button"
+                            onClick={() => {
+                              const sel = activo ? activos.filter(x => x !== o) : [...activos, o]
+                              setConnCfg(f.key, sel.join(','))
+                            }}
+                            className={`px-2 py-1 rounded-md text-[11px] border transition ${activo ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400'}`}
+                          >
+                            {o}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
                 ) : f.type === 'fields' ? (
                   <div key={f.key}>
                     <label className="text-[11px] text-gray-400 block mb-1">{f.label}</label>
@@ -1066,19 +1092,28 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                   <div key={f.key}>
                     <label className="text-[11px] text-gray-400 block mb-1">{f.label}</label>
                     <div className="space-y-1.5">
-                      {(connConfig[f.key] || []).map((item, i) => (
-                        <div key={i} className="flex gap-1.5 items-start">
-                          <input value={item.key || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], key: e.target.value }; setConnCfg(f.key, arr) }} placeholder="campo" className="w-[30%] h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
-                          <select value={item.type || 'text'} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], type: e.target.value }; setConnCfg(f.key, arr) }} className="w-[22%] h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200">
-                            <option value="text">texto</option>
-                            <option value="number">numero</option>
-                            <option value="boolean">booleano</option>
-                            <option value="array">array</option>
-                          </select>
-                          <input value={item.value || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], value: e.target.value }; setConnCfg(f.key, arr) }} placeholder={item.type === 'array' ? '[1,2,3] o {campo}' : 'valor o {campo}'} className="flex-1 h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
-                          <button type="button" title="Quitar" onClick={() => setConnCfg(f.key, (connConfig[f.key] || []).filter((_, j) => j !== i))} className="w-8 h-8 rounded-md border hover:bg-gray-50 text-gray-400 flex items-center justify-center shrink-0"><X size={12} /></button>
-                        </div>
-                      ))}
+                      {(connConfig[f.key] || []).map((item, i) => {
+                        const esArrayRequerido = ARRAY_FIELD_NAMES.includes(String(item.key || '').trim())
+                        const tipoMal = esArrayRequerido && (item.type !== 'array')
+                        return (
+                          <div key={i}>
+                            <div className="flex gap-1.5 items-start">
+                              <input value={item.key || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], key: e.target.value }; setConnCfg(f.key, arr) }} placeholder="campo" className="w-[30%] h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                              <select value={item.type || 'text'} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], type: e.target.value }; setConnCfg(f.key, arr) }} className={`w-[22%] h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 ${tipoMal ? 'border-red-400 text-red-600' : 'focus:ring-blue-200'}`}>
+                                <option value="text">texto</option>
+                                <option value="number">numero</option>
+                                <option value="boolean">booleano</option>
+                                <option value="array">array</option>
+                              </select>
+                              <input value={item.value || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], value: e.target.value }; setConnCfg(f.key, arr) }} placeholder={item.type === 'array' ? '[1,2,3] o {campo}' : 'valor o {campo}'} className="flex-1 h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                              <button type="button" title="Quitar" onClick={() => setConnCfg(f.key, (connConfig[f.key] || []).filter((_, j) => j !== i))} className="w-8 h-8 rounded-md border hover:bg-gray-50 text-gray-400 flex items-center justify-center shrink-0"><X size={12} /></button>
+                            </div>
+                            {tipoMal && (
+                              <div className="text-[10px] text-red-600 mt-0.5">Este campo debe ser tipo array.</div>
+                            )}
+                          </div>
+                        )
+                      })}
                       <button type="button" onClick={() => setConnCfg(f.key, [...(connConfig[f.key] || []), { key: '', type: 'text', value: '' }])} className="w-full flex items-center justify-center gap-1.5 h-8 rounded-md border border-dashed hover:bg-gray-50 text-xs text-gray-500"><Plus size={12} />Agregar campo al payload</button>
                     </div>
                   </div>
