@@ -32,12 +32,19 @@ const CONNECTOR_ACTIONS = [
   {
     app: 'wli', action: 'emailer/create_campaign', label: 'Crear campaña', icon: <Send size={14} />,
     fields: [
-      { key: 'title', label: 'Nombre de la campaña' },
+      { key: 'name', label: 'Nombre de la campaña' },
       { key: 'subject', label: 'Asunto del correo' },
       { key: 'html', label: 'HTML de la campaña' },
-      { key: 'list_id', label: 'ID de la base (lista) (opcional)' },
+      { key: 'list_names', label: 'Listas por nombre (separadas por coma)' },
+      { key: 'list_ids', label: 'IDs de lista (separados por coma)' },
+      { key: 'segment_categorias', label: 'Segmentos por categoria (separados por coma)' },
+      { key: 'segment_temperaturas', label: 'Temperaturas: caliente, tibio, frio, congelado, sin_enviar' },
+      { key: 'from_email', label: 'Email remitente (opcional)' },
+      { key: 'from_name', label: 'Nombre remitente (opcional)' },
+      { key: 'reply_to', label: 'Responder a (opcional)' },
     ],
-    outputs: ['title', 'subject', 'html', 'list_id'],
+    arrayFields: ['list_names', 'list_ids', 'segment_categorias', 'segment_temperaturas'],
+    outputs: ['name', 'subject', 'html', 'list_names', 'list_ids', 'segment_categorias', 'segment_temperaturas', 'from_email', 'from_name', 'reply_to'],
   },
   {
     app: 'wli', action: 'emailer/enroll_contact', label: 'Enrolar contacto', icon: <UserPlus size={14} />,
@@ -80,7 +87,15 @@ function getNodeOutputs(node) {
     const def = CONNECTOR_ACTIONS.find(a => a.app === d.app && a.action === d.action)
     const cfg = (d.config && typeof d.config === 'object') ? d.config : {}
     const claves = (def?.outputs && def.outputs.length) ? def.outputs : Object.keys(cfg)
-    for (const k of claves) out[k] = cfg[k]
+    const esArray = (def?.arrayFields && Array.isArray(def.arrayFields)) ? def.arrayFields : []
+    for (const k of claves) {
+      const v = cfg[k]
+      if (esArray.includes(k) && typeof v === 'string' && v.trim()) {
+        out[k] = v.split(',').map(x => x.trim()).filter(Boolean)
+      } else {
+        out[k] = v
+      }
+    }
     return out
   }
   // Nodo de contenido (texto, html, url, documento): label + contenido + campos.
@@ -702,7 +717,12 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     const salidas = getNodeOutputs(src)
     const claves = Object.keys(salidas)
     if (!claves.length) { showToast('El nodo de origen no tiene campos que cargar', 'error'); return }
-    const body = claves.map(k => ({ key: k, type: 'text', value: salidas[k] !== undefined && salidas[k] !== null ? String(salidas[k]) : '' }))
+    const body = claves.map(k => {
+      const v = salidas[k]
+      // Si el valor es un array real, guardarlo como JSON y marcarlo tipo array.
+      if (Array.isArray(v)) return { key: k, type: 'array', value: JSON.stringify(v) }
+      return { key: k, type: 'text', value: v !== undefined && v !== null ? String(v) : '' }
+    })
     setConnCfg('body', body)
     showToast(`Payload cargado desde "${src.data?.label || 'nodo anterior'}"`)
   }
