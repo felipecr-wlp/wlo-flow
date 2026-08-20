@@ -1374,8 +1374,8 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
 }
 
 function Modal({ onClose, title, children }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-    <div className="bg-white border rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className="bg-white border rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
       <div className="flex items-center justify-between px-5 py-3 border-b"><span className="font-semibold text-sm">{title}</span><button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={16} /></button></div>
       <div className="flex-1 overflow-y-auto p-5">{children}</div>
     </div>
