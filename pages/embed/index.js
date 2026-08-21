@@ -32,16 +32,16 @@ const CONNECTOR_ACTIONS = [
   {
     app: 'wli', action: 'emailer/create_campaign', label: 'Crear campaña', icon: <Send size={14} />,
     fields: [
-      { key: 'name', label: 'Nombre de la campaña' },
-      { key: 'subject', label: 'Asunto del correo' },
-      { key: 'html', label: 'HTML de la campaña' },
-      { key: 'list_names', label: 'Listas por nombre (separadas por coma)' },
-      { key: 'list_ids', label: 'IDs de lista (separados por coma)' },
-      { key: 'segment_categorias', label: 'Segmentos por categoria (separados por coma)' },
-      { key: 'segment_temperaturas', label: 'Temperaturas (multi-seleccion)', type: 'multiselect', options: ['caliente', 'tibio', 'frio', 'congelado', 'sin_enviar'] },
-      { key: 'from_email', label: 'Email remitente (opcional)' },
-      { key: 'from_name', label: 'Nombre remitente (opcional)' },
-      { key: 'reply_to', label: 'Responder a (opcional)' },
+      { key: 'name', label: 'Nombre de la campaña', default: 'Campana de prueba' },
+      { key: 'subject', label: 'Asunto del correo', default: 'Asunto de prueba' },
+      { key: 'html', label: 'HTML de la campaña', default: '<h1>Hola</h1>' },
+      { key: 'list_names', label: 'Listas por nombre (separadas por coma)', default: 'Prospectos comerciales' },
+      { key: 'list_ids', label: 'IDs de lista (UUIDs, separados por coma)', default: '' },
+      { key: 'segment_categorias', label: 'Segmentos por categoria (separados por coma)', default: '' },
+      { key: 'segment_temperaturas', label: 'Temperaturas (multi-seleccion)', type: 'multiselect', options: ['caliente', 'tibio', 'frio', 'congelado', 'sin_enviar'], default: '' },
+      { key: 'from_email', label: 'Email remitente (opcional)', default: '' },
+      { key: 'from_name', label: 'Nombre remitente (opcional)', default: '' },
+      { key: 'reply_to', label: 'Responder a (opcional)', default: '' },
     ],
     arrayFields: ['list_names', 'list_ids', 'segment_categorias', 'segment_temperaturas'],
     outputs: ['name', 'subject', 'html', 'list_names', 'list_ids', 'segment_categorias', 'segment_temperaturas', 'from_email', 'from_name', 'reply_to'],
@@ -76,6 +76,18 @@ const CONNECTOR_APPS = [...new Set(CONNECTOR_ACTIONS.map(a => a.app))]
 
 // Nombres de campo que SIEMPRE deben ir como array en el payload REST.
 const ARRAY_FIELD_NAMES = ['list_names', 'list_ids', 'segment_categorias', 'segment_temperaturas']
+
+/** Config inicial de una accion con sus valores por defecto. */
+function defaultConfigFor(def) {
+  const cfg = {}
+  for (const f of (def?.fields || [])) {
+    if (f.default !== undefined) cfg[f.key] = f.default
+    else if (f.type === 'check') cfg[f.key] = false
+    else if (f.type === 'multiselect') cfg[f.key] = ''
+    else if (f.type === 'fields' || f.type === 'typed') cfg[f.key] = []
+  }
+  return cfg
+}
 
 /**
  * Devuelve un objeto plano campo -> valor con los "outputs" de cualquier nodo.
@@ -701,13 +713,13 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     if (readOnly) return
     if (e.altKey && e.key === 'm') { setAltHeld(h => !h); e.preventDefault(); return } if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return; if (e.key === 'Delete') deleteSelected(); else if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo() } else if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo() } else if (e.ctrlKey && e.key === 'c') { e.preventDefault(); copySelected() } else if (e.ctrlKey && e.key === 'v') { e.preventDefault(); pasteSelected() } }, [nodes, edges, readOnly])
   const onDragOver = useCallback(e => { if (readOnly) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move' }, [readOnly])
-  const onDrop = useCallback(e => { e.preventDefault(); if (readOnly) return; const type = e.dataTransfer.getData('application/reactflow'); if (!type) return; const bounds = reactFlowInstance.current?.screenToFlowPosition?.({ x: e.clientX, y: e.clientY }) || { x: e.clientX - 250, y: e.clientY - 100 }; pushHistory(nodes, edges); if (type.startsWith('shape:')) { const shape = type.split(':')[1]; const dims = shape === 'line' ? { w: 200, h: 40 } : shape === 'grid' ? { w: 240, h: 200 } : shape === 'text' ? { w: 160, h: 50 } : { w: 160, h: 120 }; setNodes(nds => [...nds, { id: `shape-${Date.now()}`, type: 'shape', position: bounds, data: { shape, width: dims.w, height: dims.h, fill: '#f1f5f9', stroke: '#64748b', label: shape === 'text' ? 'Texto' : '', cols: 3, rows: 3 } }]) } else if (type.startsWith('connector:')) { const [, app, action] = type.split(':'); const def = CONNECTOR_ACTIONS.find(a => a.app === app && a.action === action); const cfg = {}; (def?.fields || []).forEach(f => { if (f.type === 'check') cfg[f.key] = false }); setNodes(nds => [...nds, { id: `connector-${Date.now()}`, type: 'connector', position: bounds, data: { app, action, label: def?.label || action, config: cfg } }]) } else { setNodes(nds => [...nds, { id: `node-${Date.now()}`, type: 'custom', position: bounds, data: { label: 'Nuevo nodo', content: { contentType: type, content: '' } } }]) } }, [nodes, edges, readOnly])
+  const onDrop = useCallback(e => { e.preventDefault(); if (readOnly) return; const type = e.dataTransfer.getData('application/reactflow'); if (!type) return; const bounds = reactFlowInstance.current?.screenToFlowPosition?.({ x: e.clientX, y: e.clientY }) || { x: e.clientX - 250, y: e.clientY - 100 }; pushHistory(nodes, edges); if (type.startsWith('shape:')) { const shape = type.split(':')[1]; const dims = shape === 'line' ? { w: 200, h: 40 } : shape === 'grid' ? { w: 240, h: 200 } : shape === 'text' ? { w: 160, h: 50 } : { w: 160, h: 120 }; setNodes(nds => [...nds, { id: `shape-${Date.now()}`, type: 'shape', position: bounds, data: { shape, width: dims.w, height: dims.h, fill: '#f1f5f9', stroke: '#64748b', label: shape === 'text' ? 'Texto' : '', cols: 3, rows: 3 } }]) } else if (type.startsWith('connector:')) { const [, app, action] = type.split(':'); const def = CONNECTOR_ACTIONS.find(a => a.app === app && a.action === action); const cfg = defaultConfigFor(def); setNodes(nds => [...nds, { id: `connector-${Date.now()}`, type: 'connector', position: bounds, data: { app, action, label: def?.label || action, config: cfg } }]) } else { setNodes(nds => [...nds, { id: `node-${Date.now()}`, type: 'custom', position: bounds, data: { label: 'Nuevo nodo', content: { contentType: type, content: '' } } }]) } }, [nodes, edges, readOnly])
 
   function handleNodeDoubleClick(e, node) { const d = node.data || {}; if (d.locked) return; if (d.app && d.action) { openConnectorEdit(node); return } if (d.shape) { setEditingShapeId(node.id); setShapeW(d.width || 160); setShapeH(d.height || 120); setShapeLabel(d.label || ''); setShapeFill(d.fill || '#f1f5f9'); setShapeStroke(d.stroke || '#64748b'); setShapeType(d.shape) } else { setEditingNodeId(node.id); setNodeLabel(d.label || ''); setNodeSubtitle(d.subtitle || ''); setNodeColor(d.color || '#3b82f6'); setNodeTags(Array.isArray(d.tags) ? d.tags.join(', ') : (d.tags || '')); setNodeLink(d.link || ''); setNodeOwner(d.owner || ''); setNodeFields(Array.isArray(d.fields) ? d.fields.map(f => ({ key: f.key || '', value: f.value || '' })) : []); setNodeType(d.content?.contentType || 'text'); setNodeContent(d.content?.content || ''); setPreviewHtml(false) } }
   function saveNode() { if (!editingNodeId) return; const tags = nodeTags.split(',').map(t => t.trim()).filter(Boolean); const fields = nodeFields.filter(f => (f.key || '').trim() || (f.value || '').trim()).map(f => ({ key: (f.key || '').trim(), value: (f.value || '').trim() })); setNodes(nds => nds.map(n => n.id === editingNodeId ? { ...n, data: { ...n.data, label: nodeLabel, subtitle: nodeSubtitle, color: nodeColor, tags, link: nodeLink, owner: nodeOwner, fields, content: { contentType: nodeType, content: nodeContent } } } : n)); setEditingNodeId(null); autoSave() }
   function openConnectorEdit(node) { const d = node.data || {}; setEditingConnectorId(node.id); setConnApp(d.app || 'wli'); setConnAction(d.action || CONNECTOR_ACTIONS[0].action); setConnLabel(d.label || ''); setConnConfig((d.config && typeof d.config === 'object') ? { ...d.config } : {}) }
   function saveConnector() { if (!editingConnectorId) return; setNodes(nds => nds.map(n => n.id === editingConnectorId ? { ...n, data: { ...n.data, app: connApp, action: connAction, label: connLabel, config: connConfig } } : n)); setEditingConnectorId(null); autoSave() }
-  function cambiarAccionConector(action) { setConnAction(action); const def = CONNECTOR_ACTIONS.find(a => a.app === connApp && a.action === action); const cfg = {}; (def?.fields || []).forEach(f => { if (f.type === 'check') cfg[f.key] = false }); setConnConfig(cfg) }
+  function cambiarAccionConector(action) { setConnAction(action); const def = CONNECTOR_ACTIONS.find(a => a.app === connApp && a.action === action); setConnConfig(defaultConfigFor(def)) }
   function setConnCfg(key, val) { setConnConfig(cfg => ({ ...cfg, [key]: val })) }
   function predecesoresDe(nodeId) {
     return nodes.filter(n => edges.some(e => e.target === nodeId && e.source === n.id))
