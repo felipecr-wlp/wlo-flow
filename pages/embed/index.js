@@ -89,6 +89,32 @@ function defaultConfigFor(def) {
   return cfg
 }
 
+/** Convierte las filas del body del nodo REST al objeto JSON que se envia.
+ *  Los campos de ARRAY_FIELD_NAMES siempre salen como array de strings
+ *  (aunque la fila este marcada como numero o el valor venga numerico),
+ *  y los valores vacios se omiten para no romper la validacion Zod. */
+function bodyAPayload(body) {
+  const payload = {}
+  for (const b of (Array.isArray(body) ? body : [])) {
+    if (!b || !b.key || !String(b.key).trim()) continue
+    const k = String(b.key).trim()
+    const raw = b.value ?? ''
+    if (ARRAY_FIELD_NAMES.includes(k) || b.type === 'array') {
+      const t = String(raw).trim()
+      let arr
+      if (t.startsWith('[')) { try { arr = JSON.parse(t) } catch { arr = t.split(',') } }
+      else arr = t.split(',')
+      const limpio = arr.map(x => (x === null || x === undefined ? '' : typeof x === 'object' ? JSON.stringify(x) : String(x))).map(x => x.trim()).filter(Boolean)
+      if (limpio.length) payload[k] = limpio
+      continue
+    }
+    if (b.type === 'number') { if (String(raw).trim() !== '') payload[k] = Number(raw) || 0; continue }
+    if (b.type === 'boolean') { payload[k] = raw === true || raw === 'true' || raw === '1'; continue }
+    if (String(raw) !== '') payload[k] = raw
+  }
+  return payload
+}
+
 /**
  * Devuelve un objeto plano campo -> valor con los "outputs" de cualquier nodo.
  * Sirve para que el nodo REST mapee datos de nodos de texto, HTML, figuras o
@@ -757,15 +783,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     const url = String(connConfig.url || '').trim()
     const method = String(connConfig.method || 'POST').trim().toUpperCase()
     if (!/^https?:\/\//i.test(url)) { showToast('Falta la URL del endpoint', 'error'); return }
-    const payload = {}
-    for (const b of (Array.isArray(connConfig.body) ? connConfig.body : [])) {
-      if (!b || !b.key || !String(b.key).trim()) continue
-      const k = String(b.key).trim(); const raw = b.value ?? ''
-      if (b.type === 'number') payload[k] = Number(raw) || 0
-      else if (b.type === 'boolean') payload[k] = raw === true || raw === 'true' || raw === '1'
-      else if (b.type === 'array') { const t = String(raw).trim(); if (t.startsWith('[')) { try { payload[k] = JSON.parse(t) } catch { payload[k] = t.split(',').map(x => x.trim()) } } else payload[k] = t.split(',').map(x => x.trim()).filter(Boolean) }
-      else payload[k] = raw
-    }
+    const payload = bodyAPayload(connConfig.body)
     const headers = construirHeaders(connConfig)
     setConnTesting(true); setConnTestResult(null)
     let ok = false
@@ -1210,20 +1228,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
               const outs = getNodeOutputs(p)
               for (const o of Object.keys(outs)) referencias.push({ nodo: p.data?.label || p.id, campo: o })
             }
-            const payloadPreview = (connConfig.body || []).reduce((acc, item) => {
-              if (!item.key || !String(item.key).trim()) return acc
-              const k = String(item.key).trim()
-              const v = item.value || ''
-              if (item.type === 'number') acc[k] = Number(v) || 0
-              else if (item.type === 'boolean') acc[k] = v === 'true' || v === '1'
-              else if (item.type === 'array') {
-                const t = v.trim()
-                if (t.startsWith('[')) { try { acc[k] = JSON.parse(t) } catch { acc[k] = v.split(',').map(x => x.trim()) } }
-                else if (t.startsWith('{')) acc[k] = t
-                else acc[k] = t.split(',').map(x => x.trim()).filter(Boolean)
-              } else acc[k] = v
-              return acc
-            }, {})
+            const payloadPreview = bodyAPayload(connConfig.body)
             return (
               <div className="space-y-2">
                 {connApp === 'rest' && (
