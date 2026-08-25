@@ -9,7 +9,7 @@ import '@xyflow/react/dist/style.css'
 import {
   Save, Trash2, Type, Code, Link as LinkIcon, FileText, Pencil,
   Square, Circle, Minus, Grid3X3, ChevronDown, ChevronUp, Copy, Undo2, Redo2,
-  Lock, Unlock, ArrowUp, ArrowDown, Maximize, Download, Upload, Eye, Edit3,
+   Lock, Unlock, ArrowUp, ArrowDown, Maximize, Download, Upload, Eye, Edit3, Code2,
   X, HelpCircle, Share2, Plus, PenTool, Layout, Hand, Search, Check,
   AlertTriangle, RefreshCw, Plug, Send, UserPlus, List as ListIcon, Play, Home,
 } from 'lucide-react'
@@ -624,6 +624,14 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   // iframe de WLO el navegador puede tener la Fullscreen API bloqueada.
   const [previewFull, setPreviewFull] = useState(false)
   const [previewFullHtml, setPreviewFullHtml] = useState('')
+  const [previewFullIsCode, setPreviewFullIsCode] = useState(false)
+  const [previewFullSource, setPreviewFullSource] = useState(null)
+  useEffect(() => {
+    if (previewFull || !previewFullSource || !previewFullIsCode) return
+    if (previewFullSource.type === 'node') setNodeContent(previewFullHtml)
+    else setConnConfig(prev => ({ ...prev, [previewFullSource.field]: previewFullHtml }))
+    setPreviewFullSource(null)
+  }, [previewFull])
   useEffect(() => {
     if (!previewFull) return
     const onKey = e => { if (e.key === 'Escape') setPreviewFull(false) }
@@ -1049,7 +1057,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
           <div><label className="text-xs font-medium text-gray-500 mb-1 block">Responsable</label><input value={nodeOwner} onChange={e => setNodeOwner(e.target.value)} placeholder="Persona asignada" className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" /></div>
           <div><label className="text-xs font-medium text-gray-500 mb-1 block">Enlace de referencia</label><input value={nodeLink} onChange={e => setNodeLink(e.target.value)} placeholder="https://..." className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" /></div>
           <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tipo</label><div className="flex gap-1">{CONTENT_TYPES.map(t => <button key={t} onClick={() => { setNodeType(t); setPreviewHtml(false) }} className={`flex-1 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${nodeType === t ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>{NI[t]} {t}</button>)}</div></div>
-          <div><div className="flex items-center justify-between mb-1"><label className="text-xs font-medium text-gray-500">{nodeType === 'url' ? 'URL' : 'Contenido'}</label>{nodeType === 'html' && <span className="flex items-center gap-1">{previewHtml && <button onClick={() => { setPreviewFullHtml(nodeContent); setPreviewFull(true) }} className="flex items-center gap-1 text-xs rounded px-2 py-0.5 bg-gray-100 hover:bg-gray-200"><Maximize size={12} />Pantalla completa</button>}<button onClick={() => setPreviewHtml(!previewHtml)} className={`flex items-center gap-1 text-xs rounded px-2 py-0.5 ${previewHtml ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>{previewHtml ? <Edit3 size={12} /> : <Eye size={12} />}{previewHtml ? 'Codigo' : 'Preview'}</button></span>}</div>
+          <div><div className="flex items-center justify-between mb-1"><label className="text-xs font-medium text-gray-500">{nodeType === 'url' ? 'URL' : 'Contenido'}</label>{nodeType === 'html' && <span className="flex items-center gap-1"><button onClick={() => { setPreviewFullHtml(nodeContent); setPreviewFullIsCode(!previewHtml); setPreviewFullSource({ type: 'node' }); setPreviewFull(true) }} className="flex items-center gap-1 text-xs rounded px-2 py-0.5 bg-gray-100 hover:bg-gray-200"><Maximize size={12} />Pantalla completa</button><button onClick={() => setPreviewHtml(!previewHtml)} className={`flex items-center gap-1 text-xs rounded px-2 py-0.5 ${previewHtml ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>{previewHtml ? <><Edit3 size={12} />Codigo</> : <><Eye size={12} />Preview</>}</button></span>}</div>
           {nodeType === 'html' && previewHtml ? <iframe key="preview" srcDoc={nodeContent} className="w-full min-h-[200px] rounded-md border bg-white" sandbox="allow-scripts" style={{ border: 0 }} /> : <textarea value={nodeContent} onChange={e => setNodeContent(e.target.value)} className="w-full min-h-[200px] rounded-md border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-blue-200 resize-y" />}</div>
         </div>
         <div className="flex justify-end gap-2 mt-4"><button onClick={() => setEditingNodeId(null)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button><button onClick={saveNode} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"><Save size={14} />Guardar</button></div>
@@ -1219,7 +1227,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                       <label className="text-[11px] text-gray-400">{f.label}</label>
                       {f.key === 'html' && (
                         <span className="flex items-center gap-1">
-                          {connHtmlPreview && <button type="button" onClick={() => { setPreviewFullHtml(String(connConfig[f.key] || '')); setPreviewFull(true) }} className="flex items-center gap-1 text-[10px] rounded px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-600"><Maximize size={10} />Pantalla completa</button>}
+                          <button type="button" onClick={() => { setPreviewFullHtml(String(connConfig[f.key] || '')); setPreviewFullIsCode(!connHtmlPreview); setPreviewFullSource({ type: 'connector', field: f.key }); setPreviewFull(true) }} className="flex items-center gap-1 text-[10px] rounded px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-600"><Maximize size={10} />Pantalla completa</button>
                           <button type="button" onClick={() => setConnHtmlPreview(!connHtmlPreview)} className={`flex items-center gap-1 text-[10px] rounded px-1.5 py-0.5 ${connHtmlPreview ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}>
                             {connHtmlPreview ? <Edit3 size={10} /> : <Eye size={10} />}{connHtmlPreview ? 'Codigo' : 'Preview'}
                           </button>
@@ -1396,9 +1404,21 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
       {previewFull && <div className="fixed inset-0 flex flex-col bg-white" style={{ zIndex: 300 }}>
         <div className="flex items-center justify-between px-4 py-2 border-b shrink-0" style={{ borderColor: '#e2e8f0' }}>
           <span className="text-sm font-medium truncate">{nodeLabel || 'Preview HTML'}</span>
-          <button onClick={() => setPreviewFull(false)} className="flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs hover:bg-gray-50"><X size={14} />Salir (Esc)</button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setPreviewFullIsCode(!previewFullIsCode)} className={`flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs ${previewFullIsCode ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 hover:bg-gray-200'}`}>{previewFullIsCode ? <><Eye size={14} /> Preview</> : <><Code2 size={14} /> Codigo</>}</button>
+            <button onClick={() => setPreviewFull(false)} className="flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs hover:bg-gray-50"><X size={14} />Salir (Esc)</button>
+          </div>
         </div>
-        <iframe key="preview-full" srcDoc={previewFullHtml} className="flex-1 w-full" sandbox="allow-scripts" style={{ border: 0 }} title="Preview pantalla completa" />
+        {previewFullIsCode ? (
+          <textarea
+            value={previewFullHtml}
+            onChange={e => setPreviewFullHtml(e.target.value)}
+            className="flex-1 w-full p-4 font-mono text-xs leading-relaxed border-0 outline-none resize-none bg-gray-900 text-green-400"
+            spellCheck={false}
+          />
+        ) : (
+          <iframe key="preview-full" srcDoc={previewFullHtml} className="flex-1 w-full" sandbox="allow-scripts" style={{ border: 0 }} title="Preview pantalla completa" />
+        )}
       </div>}
       {showExport && <Modal onClose={() => setShowExport(false)} title="Exportar flujo">
         <div className="space-y-3">
