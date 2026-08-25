@@ -619,6 +619,16 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   const [nodeTags, setNodeTags] = useState(''); const [nodeLink, setNodeLink] = useState(''); const [nodeOwner, setNodeOwner] = useState('')
   const [nodeFields, setNodeFields] = useState([])
   const [nodeType, setNodeType] = useState('text'); const [previewHtml, setPreviewHtml] = useState(false)
+  // Preview HTML a pantalla completa: para apreciar la estrategia completa sin
+  // el marco del modal. Overlay fijo y no requestFullscreen porque dentro del
+  // iframe de WLO el navegador puede tener la Fullscreen API bloqueada.
+  const [previewFull, setPreviewFull] = useState(false)
+  useEffect(() => {
+    if (!previewFull) return
+    const onKey = e => { if (e.key === 'Escape') setPreviewFull(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [previewFull])
   const [editingConnectorId, setEditingConnectorId] = useState(null)
   const [connApp, setConnApp] = useState('wli'); const [connAction, setConnAction] = useState('emailer/create_campaign')
   const [connLabel, setConnLabel] = useState(''); const [connConfig, setConnConfig] = useState({})
@@ -742,7 +752,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   const onDrop = useCallback(e => { e.preventDefault(); if (readOnly) return; const type = e.dataTransfer.getData('application/reactflow'); if (!type) return; const bounds = reactFlowInstance.current?.screenToFlowPosition?.({ x: e.clientX, y: e.clientY }) || { x: e.clientX - 250, y: e.clientY - 100 }; pushHistory(nodes, edges); if (type.startsWith('shape:')) { const shape = type.split(':')[1]; const dims = shape === 'line' ? { w: 200, h: 40 } : shape === 'grid' ? { w: 240, h: 200 } : shape === 'text' ? { w: 160, h: 50 } : { w: 160, h: 120 }; setNodes(nds => [...nds, { id: `shape-${Date.now()}`, type: 'shape', position: bounds, data: { shape, width: dims.w, height: dims.h, fill: '#f1f5f9', stroke: '#64748b', label: shape === 'text' ? 'Texto' : '', cols: 3, rows: 3 } }]) } else if (type.startsWith('connector:')) { const [, app, action] = type.split(':'); const def = CONNECTOR_ACTIONS.find(a => a.app === app && a.action === action); const cfg = defaultConfigFor(def); setNodes(nds => [...nds, { id: `connector-${Date.now()}`, type: 'connector', position: bounds, data: { app, action, label: def?.label || action, config: cfg } }]) } else { setNodes(nds => [...nds, { id: `node-${Date.now()}`, type: 'custom', position: bounds, data: { label: 'Nuevo nodo', content: { contentType: type, content: '' } } }]) } }, [nodes, edges, readOnly])
 
   function handleNodeDoubleClick(e, node) { const d = node.data || {}; if (d.locked) return; if (d.app && d.action) { openConnectorEdit(node); return } if (d.shape) { setEditingShapeId(node.id); setShapeW(d.width || 160); setShapeH(d.height || 120); setShapeLabel(d.label || ''); setShapeFill(d.fill || '#f1f5f9'); setShapeStroke(d.stroke || '#64748b'); setShapeType(d.shape) } else { setEditingNodeId(node.id); setNodeLabel(d.label || ''); setNodeSubtitle(d.subtitle || ''); setNodeColor(d.color || '#3b82f6'); setNodeTags(Array.isArray(d.tags) ? d.tags.join(', ') : (d.tags || '')); setNodeLink(d.link || ''); setNodeOwner(d.owner || ''); setNodeFields(Array.isArray(d.fields) ? d.fields.map(f => ({ key: f.key || '', value: f.value || '' })) : []); setNodeType(d.content?.contentType || 'text'); setNodeContent(d.content?.content || ''); setPreviewHtml(false) } }
-  function saveNode() { if (!editingNodeId) return; const tags = nodeTags.split(',').map(t => t.trim()).filter(Boolean); const fields = nodeFields.filter(f => (f.key || '').trim() || (f.value || '').trim()).map(f => ({ key: (f.key || '').trim(), value: (f.value || '').trim() })); setNodes(nds => nds.map(n => n.id === editingNodeId ? { ...n, data: { ...n.data, label: nodeLabel, subtitle: nodeSubtitle, color: nodeColor, tags, link: nodeLink, owner: nodeOwner, fields, content: { contentType: nodeType, content: nodeContent } } } : n)); setEditingNodeId(null); autoSave() }
+  function saveNode() { if (!editingNodeId) return; const tags = nodeTags.split(',').map(t => t.trim()).filter(Boolean); const fields = nodeFields.filter(f => (f.key || '').trim() || (f.value || '').trim()).map(f => ({ key: (f.key || '').trim(), value: (f.value || '').trim() })); setNodes(nds => nds.map(n => n.id === editingNodeId ? { ...n, data: { ...n.data, label: nodeLabel, subtitle: nodeSubtitle, color: nodeColor, tags, link: nodeLink, owner: nodeOwner, fields, content: { contentType: nodeType, content: nodeContent } } } : n)); setEditingNodeId(null); setPreviewFull(false); autoSave() }
   function openConnectorEdit(node) { const d = node.data || {}; setEditingConnectorId(node.id); setConnApp(d.app || 'wli'); setConnAction(d.action || CONNECTOR_ACTIONS[0].action); setConnLabel(d.label || ''); setConnConfig((d.config && typeof d.config === 'object') ? { ...d.config } : {}) }
   function saveConnector() { if (!editingConnectorId) return; setNodes(nds => nds.map(n => n.id === editingConnectorId ? { ...n, data: { ...n.data, app: connApp, action: connAction, label: connLabel, config: connConfig } } : n)); setEditingConnectorId(null); autoSave() }
   function cambiarAccionConector(action) { setConnAction(action); const def = CONNECTOR_ACTIONS.find(a => a.app === connApp && a.action === action); setConnConfig(defaultConfigFor(def)) }
@@ -1038,7 +1048,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
           <div><label className="text-xs font-medium text-gray-500 mb-1 block">Responsable</label><input value={nodeOwner} onChange={e => setNodeOwner(e.target.value)} placeholder="Persona asignada" className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" /></div>
           <div><label className="text-xs font-medium text-gray-500 mb-1 block">Enlace de referencia</label><input value={nodeLink} onChange={e => setNodeLink(e.target.value)} placeholder="https://..." className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" /></div>
           <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tipo</label><div className="flex gap-1">{CONTENT_TYPES.map(t => <button key={t} onClick={() => { setNodeType(t); setPreviewHtml(false) }} className={`flex-1 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${nodeType === t ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>{NI[t]} {t}</button>)}</div></div>
-          <div><div className="flex items-center justify-between mb-1"><label className="text-xs font-medium text-gray-500">{nodeType === 'url' ? 'URL' : 'Contenido'}</label>{nodeType === 'html' && <button onClick={() => setPreviewHtml(!previewHtml)} className={`flex items-center gap-1 text-xs rounded px-2 py-0.5 ${previewHtml ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>{previewHtml ? <Edit3 size={12} /> : <Eye size={12} />}{previewHtml ? 'Codigo' : 'Preview'}</button>}</div>
+          <div><div className="flex items-center justify-between mb-1"><label className="text-xs font-medium text-gray-500">{nodeType === 'url' ? 'URL' : 'Contenido'}</label>{nodeType === 'html' && <span className="flex items-center gap-1">{previewHtml && <button onClick={() => setPreviewFull(true)} className="flex items-center gap-1 text-xs rounded px-2 py-0.5 bg-gray-100 hover:bg-gray-200"><Maximize size={12} />Pantalla completa</button>}<button onClick={() => setPreviewHtml(!previewHtml)} className={`flex items-center gap-1 text-xs rounded px-2 py-0.5 ${previewHtml ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>{previewHtml ? <Edit3 size={12} /> : <Eye size={12} />}{previewHtml ? 'Codigo' : 'Preview'}</button></span>}</div>
           {nodeType === 'html' && previewHtml ? <iframe key="preview" srcDoc={nodeContent} className="w-full min-h-[200px] rounded-md border bg-white" sandbox="allow-scripts" style={{ border: 0 }} /> : <textarea value={nodeContent} onChange={e => setNodeContent(e.target.value)} className="w-full min-h-[200px] rounded-md border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-blue-200 resize-y" />}</div>
         </div>
         <div className="flex justify-end gap-2 mt-4"><button onClick={() => setEditingNodeId(null)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button><button onClick={saveNode} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"><Save size={14} />Guardar</button></div>
@@ -1379,6 +1389,13 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
           {toast.msg}
         </div>
       )}
+      {previewFull && <div className="fixed inset-0 flex flex-col bg-white" style={{ zIndex: 300 }}>
+        <div className="flex items-center justify-between px-4 py-2 border-b shrink-0" style={{ borderColor: '#e2e8f0' }}>
+          <span className="text-sm font-medium truncate">{nodeLabel || 'Preview HTML'}</span>
+          <button onClick={() => setPreviewFull(false)} className="flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs hover:bg-gray-50"><X size={14} />Salir (Esc)</button>
+        </div>
+        <iframe key="preview-full" srcDoc={nodeContent} className="flex-1 w-full" sandbox="allow-scripts" style={{ border: 0 }} title="Preview pantalla completa" />
+      </div>}
       {showExport && <Modal onClose={() => setShowExport(false)} title="Exportar flujo">
         <div className="space-y-3">
           <p className="text-xs text-gray-500">Copiá el contenido o descargá el archivo JSON:</p>
