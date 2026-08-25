@@ -277,7 +277,7 @@ export default function FlowApp() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [creating, setCreating] = useState(false)
-  const enmarcado = typeof window !== 'undefined' && window.top !== window
+  const enmarcado = typeof window !== 'undefined' && (function() { try { return window.top !== window } catch { return window.parent !== window } })()
 
   const [wsId, setWsId] = useState('demo')
   const [instId, setInstId] = useState('')
@@ -304,7 +304,7 @@ export default function FlowApp() {
       const v = p.get(k)
       if (v) raw[k] = v
     }
-    setEmbedInfo({ ...raw, enmarcado: typeof window !== 'undefined' && window.top !== window })
+    setEmbedInfo({ ...raw, enmarcado: typeof window !== 'undefined' && (function() { try { return window.top !== window } catch { return window.parent !== window } })() })
   }, [])
 
   // Identidad efectiva del usuario. Prioridad: el user_id (profile_id) que
@@ -396,19 +396,20 @@ export default function FlowApp() {
   )
 }
 
-// Descarga de JSON por enlace. Funciona standalone; dentro del iframe sandbox
-// de WLO se prefiere el relay por postMessage (ver pedirDescargaAlPadre) y este
-// queda como respaldo por si el ambiente igual permite descargas locales.
+// Descarga de JSON. Primero intenta relay por postMessage al padre (para
+// iframes sandboxed). Si no hay padre o el relay falla, usa data URI que
+// funciona en cualquier contexto incluyendo iframes sandboxed.
 function downloadJson(text, filename) {
-  const blob = new Blob([text], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
+  if (window.parent && window.parent !== window) {
+    try { window.parent.postMessage({ type: 'wlo-request-download', filename, content: text }, '*') } catch {}
+  }
   const a = document.createElement('a')
-  a.href = url
+  a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(text)
   a.download = filename
+  a.style.display = 'none'
   document.body.appendChild(a)
   a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  setTimeout(() => document.body.removeChild(a), 100)
 }
 
 function copyTextoLegacy(texto) {
@@ -860,13 +861,13 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     let ok = false
     const onAck = e => { if (e.data && e.data.type === 'wlo-download-ok') ok = true }
     window.addEventListener('message', onAck)
-    window.parent.postMessage({ type: 'wlo-request-download', filename, content }, '*')
+    try { window.parent.postMessage({ type: 'wlo-request-download', filename, content }, '*') } catch {}
     setTimeout(() => {
       window.removeEventListener('message', onAck)
       if (ok) { showToast('Flujo exportado'); return }
       setExportText(content)
       setShowExport(true)
-    }, 700)
+    }, 1500)
   }
   const handleImport = () => { const el = document.createElement('input'); el.type = 'file'; el.accept = '.json'; el.onchange = async (ev) => { const file = ev.target.files?.[0]; if (!file) return; try { const text = await file.text(); const data = JSON.parse(text); if (data.nodes) { pushHistory(nodes, edges); setNodes(data.nodes); setEdges(data.edges || []); if (data.title) setTitle(data.title); if (data.description !== undefined) setDescription(data.description); autoSave(data.nodes, data.edges || []); showToast('Flujo importado') } } catch { showToast('Archivo inválido', 'error') } }; el.click() }
 
