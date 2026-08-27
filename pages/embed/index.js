@@ -57,9 +57,10 @@ const CONNECTOR_ACTIONS = [
   {
     app: 'wli', action: 'emailer/list_sequences', label: 'Listar secuencias', icon: <ListIcon size={14} />,
     fields: [
+      { key: 'secuencias', label: 'Secuencias a usar', type: 'seqselect', default: [] },
       { key: 'solo_activas', label: 'Solo activas', type: 'check' },
     ],
-    outputs: ['sequences'],
+    outputs: ['sequences', 'secuencias'],
   },
   {
     app: 'rest', action: 'webhook', label: 'Enviar a API REST', icon: <Plug size={14} />,
@@ -84,6 +85,7 @@ function defaultConfigFor(def) {
     if (f.default !== undefined) cfg[f.key] = f.default
     else if (f.type === 'check') cfg[f.key] = false
     else if (f.type === 'multiselect') cfg[f.key] = ''
+    else if (f.type === 'seqselect') cfg[f.key] = [{ name: 'Secuencia 1', usada: true }]
     else if (f.type === 'fields' || f.type === 'typed') cfg[f.key] = []
   }
   return cfg
@@ -1221,6 +1223,23 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                         </div>
                       </div>
                     )}
+                  </div>
+                ) : f.type === 'seqselect' ? (
+                  <div key={f.key}>
+                    <label className="text-[11px] text-gray-400 block mb-1">{f.label}</label>
+                    <div className="space-y-1.5">
+                      {(connConfig[f.key] || []).map((seq, i) => (
+                        <div key={i} className="flex items-center gap-1.5">
+                          <label className={`flex items-center gap-1.5 h-8 px-2 rounded-md border cursor-pointer transition ${seq.usada ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-500 border-gray-200 hover:border-blue-400'}`}>
+                            <Check size={12} />
+                            <input type="checkbox" checked={!!seq.usada} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], usada: e.target.checked }; setConnCfg(f.key, arr) }} className="hidden" />
+                          </label>
+                          <input value={seq.name || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], name: e.target.value }; setConnCfg(f.key, arr) }} placeholder="Nombre de la secuencia" className="flex-1 h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200" />
+                          <button type="button" title="Quitar secuencia" onClick={() => setConnCfg(f.key, (connConfig[f.key] || []).filter((_, j) => j !== i))} className="w-8 h-8 rounded-md border hover:bg-gray-50 text-gray-400 flex items-center justify-center shrink-0"><X size={12} /></button>
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => setConnCfg(f.key, [...(connConfig[f.key] || []), { name: `Secuencia ${(connConfig[f.key] || []).length + 1}`, usada: true }])} className="w-full flex items-center justify-center gap-1.5 h-8 rounded-md border border-dashed hover:bg-gray-50 text-xs text-gray-500"><Plus size={12} />Agregar secuencia</button>
+                    </div>
                   </div>
                 ) : (
                   <div key={f.key}>
