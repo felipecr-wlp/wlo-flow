@@ -34,7 +34,7 @@ const CONNECTOR_ACTIONS = [
     fields: [
       { key: 'name', label: 'Nombre de la campaña', default: 'Campana de prueba' },
       { key: 'subject', label: 'Asunto del correo', default: 'Asunto de prueba' },
-      { key: 'html', label: 'HTML de la campaña', default: '<h1>Hola</h1>' },
+      { key: 'sequences_html', label: 'HTML por secuencia', type: 'seqhtml', default: [] },
       { key: 'list_names', label: 'Listas por nombre (separadas por coma)', default: 'Prospectos comerciales' },
       { key: 'list_ids', label: 'IDs de lista (UUIDs, separados por coma)', default: '' },
       { key: 'segment_categorias', label: 'Segmentos por categoria (separados por coma)', default: '' },
@@ -44,7 +44,7 @@ const CONNECTOR_ACTIONS = [
       { key: 'reply_to', label: 'Responder a (opcional)', default: '' },
     ],
     arrayFields: ['list_names', 'list_ids', 'segment_categorias', 'segment_temperaturas'],
-    outputs: ['name', 'subject', 'html', 'list_names', 'list_ids', 'segment_categorias', 'segment_temperaturas', 'from_email', 'from_name', 'reply_to'],
+    outputs: ['name', 'subject', 'html', 'sequences_html', 'list_names', 'list_ids', 'segment_categorias', 'segment_temperaturas', 'from_email', 'from_name', 'reply_to'],
   },
   {
     app: 'wli', action: 'emailer/enroll_contact', label: 'Enrolar contacto', icon: <UserPlus size={14} />,
@@ -84,6 +84,7 @@ function defaultConfigFor(def) {
     if (f.default !== undefined) cfg[f.key] = f.default
     else if (f.type === 'check') cfg[f.key] = false
     else if (f.type === 'multiselect') cfg[f.key] = ''
+    else if (f.type === 'seqhtml') cfg[f.key] = [{ name: 'Secuencia 1', html: '<h1>Hola</h1>' }]
     else if (f.type === 'fields' || f.type === 'typed') cfg[f.key] = []
   }
   return cfg
@@ -630,6 +631,13 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   useEffect(() => {
     if (previewFull || !previewFullSource || !previewFullIsCode) return
     if (previewFullSource.type === 'node') setNodeContent(previewFullHtml)
+    else if (previewFullSource.index !== undefined) {
+      setConnConfig(prev => {
+        const arr = Array.isArray(prev[previewFullSource.field]) ? [...prev[previewFullSource.field]] : []
+        if (arr[previewFullSource.index]) arr[previewFullSource.index] = { ...arr[previewFullSource.index], html: previewFullHtml }
+        return { ...prev, [previewFullSource.field]: arr }
+      })
+    }
     else setConnConfig(prev => ({ ...prev, [previewFullSource.field]: previewFullHtml }))
     setPreviewFullSource(null)
   }, [previewFull])
@@ -643,6 +651,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   const [connApp, setConnApp] = useState('wli'); const [connAction, setConnAction] = useState('emailer/create_campaign')
   const [connLabel, setConnLabel] = useState(''); const [connConfig, setConnConfig] = useState({})
   const [connHtmlPreview, setConnHtmlPreview] = useState(false)
+  const [connSeqPreview, setConnSeqPreview] = useState(-1)
   const [connTestResult, setConnTestResult] = useState(null)
   const [connTesting, setConnTesting] = useState(false)
   const [editingShapeId, setEditingShapeId] = useState(null)
@@ -1221,6 +1230,33 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                         </div>
                       </div>
                     )}
+                  </div>
+                ) : f.type === 'seqhtml' ? (
+                  <div key={f.key}>
+                    <label className="text-[11px] text-gray-400 block mb-1">{f.label}</label>
+                    <div className="space-y-2">
+                      {(connConfig[f.key] || []).map((seq, i) => {
+                        const prev = connSeqPreview === i
+                        return (
+                          <div key={i} className="rounded-md border p-2 space-y-1.5">
+                            <div className="flex items-center justify-between gap-1.5">
+                              <input value={seq.name || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], name: e.target.value }; setConnCfg(f.key, arr) }} placeholder="Nombre de la secuencia" className="flex-1 h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200" />
+                              <span className="flex items-center gap-1 shrink-0">
+                                <button type="button" title="Pantalla completa" onClick={() => { setPreviewFullHtml(seq.html || ''); setPreviewFullIsCode(!prev); setPreviewFullSource({ type: 'connector', field: f.key, index: i }); setPreviewFull(true) }} className="flex items-center gap-1 text-[10px] rounded px-1.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600"><Maximize size={10} /></button>
+                                <button type="button" title="Ver preview" onClick={() => setConnSeqPreview(prev ? -1 : i)} className={`flex items-center gap-1 text-[10px] rounded px-1.5 py-1 ${prev ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}>{prev ? <Edit3 size={10} /> : <Eye size={10} />}</button>
+                                <button type="button" title="Quitar secuencia" onClick={() => setConnCfg(f.key, (connConfig[f.key] || []).filter((_, j) => j !== i))} className="w-6 h-6 rounded border hover:bg-gray-50 text-gray-400 flex items-center justify-center shrink-0"><X size={12} /></button>
+                              </span>
+                            </div>
+                            {prev ? (
+                              <iframe srcDoc={seq.html || ''} className="w-full min-h-[180px] rounded-md border bg-white" sandbox="allow-scripts" style={{ border: '1px solid #e2e8f0' }} />
+                            ) : (
+                              <textarea value={seq.html || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], html: e.target.value }; setConnCfg(f.key, arr) }} placeholder={'<p>Hola {nombre}, …</p>'} rows={5} className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 font-mono resize-y" />
+                            )}
+                          </div>
+                        )
+                      })}
+                      <button type="button" onClick={() => setConnCfg(f.key, [...(connConfig[f.key] || []), { name: `Secuencia ${(connConfig[f.key] || []).length + 1}`, html: '' }])} className="w-full flex items-center justify-center gap-1.5 h-8 rounded-md border border-dashed hover:bg-gray-50 text-xs text-gray-500"><Plus size={12} />Agregar secuencia</button>
+                    </div>
                   </div>
                 ) : (
                   <div key={f.key}>
