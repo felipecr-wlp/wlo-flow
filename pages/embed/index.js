@@ -652,6 +652,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   const [connApp, setConnApp] = useState('wli'); const [connAction, setConnAction] = useState('emailer/create_campaign')
   const [connLabel, setConnLabel] = useState(''); const [connConfig, setConnConfig] = useState({})
   const [connHtmlPreview, setConnHtmlPreview] = useState(false)
+  const [connSeqPreview, setConnSeqPreview] = useState(-1)
   const [connTestResult, setConnTestResult] = useState(null)
   const [connTesting, setConnTesting] = useState(false)
   const [editingShapeId, setEditingShapeId] = useState(null)
