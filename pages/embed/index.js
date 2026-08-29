@@ -8,7 +8,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import {
   Save, Trash2, Type, Code, Link as LinkIcon, FileText, Pencil,
-  Square, Circle, Minus, Grid3X3, ChevronDown, ChevronUp, Copy, Undo2, Redo2,
+  Square, Circle, Minus, Grid3X3, ChevronDown, ChevronUp, ChevronRight, Copy, Undo2, Redo2,
    Lock, Unlock, ArrowUp, ArrowDown, Maximize, Download, Upload, Eye, Edit3, Code2,
   X, HelpCircle, Share2, Plus, PenTool, Layout, Hand, Search, Check, Settings,
   AlertTriangle, RefreshCw, Plug, Send, UserPlus, List as ListIcon, Play, Home,
@@ -679,6 +679,8 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   const [connSeqPreview, setConnSeqPreview] = useState(-1)
   const [connTestResult, setConnTestResult] = useState(null)
   const [connTesting, setConnTesting] = useState(false)
+  const [payloadOpen, setPayloadOpen] = useState(false)
+  const [payloadErrores, setPayloadErrores] = useState({})
   const [editingShapeId, setEditingShapeId] = useState(null)
   const [shapeW, setShapeW] = useState(160); const [shapeH, setShapeH] = useState(120)
   const [shapeLabel, setShapeLabel] = useState(''); const [shapeFill, setShapeFill] = useState('#f1f5f9')
@@ -812,9 +814,9 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
 
   function handleNodeDoubleClick(e, node) { const d = node.data || {}; if (d.locked) return; if (d.app && d.action) { openConnectorEdit(node); return } if (d.shape) { setEditingShapeId(node.id); setShapeW(d.width || 160); setShapeH(d.height || 120); setShapeLabel(d.label || ''); setShapeFill(d.fill || '#f1f5f9'); setShapeStroke(d.stroke || '#64748b'); setShapeType(d.shape) } else { setEditingNodeId(node.id); setNodeLabel(d.label || ''); setNodeSubtitle(d.subtitle || ''); setNodeColor(d.color || '#3b82f6'); setNodeTags(Array.isArray(d.tags) ? d.tags.join(', ') : (d.tags || '')); setNodeLink(d.link || ''); setNodeOwner(d.owner || ''); setNodeFields(Array.isArray(d.fields) ? d.fields.map(f => ({ key: f.key || '', value: f.value || '' })) : []); setNodeType(d.content?.contentType || 'text'); setNodeContent(d.content?.content || ''); setPreviewHtml(false) } }
   function saveNode() { if (!editingNodeId) return; const tags = nodeTags.split(',').map(t => t.trim()).filter(Boolean); const fields = nodeFields.filter(f => (f.key || '').trim() || (f.value || '').trim()).map(f => ({ key: (f.key || '').trim(), value: (f.value || '').trim() })); setNodes(nds => nds.map(n => n.id === editingNodeId ? { ...n, data: { ...n.data, label: nodeLabel, subtitle: nodeSubtitle, color: nodeColor, tags, link: nodeLink, owner: nodeOwner, fields, content: { contentType: nodeType, content: nodeContent } } } : n)); setEditingNodeId(null); autoSave() }
-  function openConnectorEdit(node) { const d = node.data || {}; setEditingConnectorId(node.id); setConnApp(d.app || 'wli'); setConnAction(d.action || CONNECTOR_ACTIONS[0].action); setConnLabel(d.label || ''); setConnConfig((d.config && typeof d.config === 'object') ? { ...d.config } : {}); setConnSeqPreview(-1); setConnHtmlPreview(false) }
+  function openConnectorEdit(node) { const d = node.data || {}; setEditingConnectorId(node.id); setConnApp(d.app || 'wli'); setConnAction(d.action || CONNECTOR_ACTIONS[0].action); setConnLabel(d.label || ''); setConnConfig((d.config && typeof d.config === 'object') ? { ...d.config } : {}); setConnSeqPreview(-1); setConnHtmlPreview(false); setPayloadOpen(false); setPayloadErrores({}) }
   function saveConnector() { if (!editingConnectorId) return; setNodes(nds => nds.map(n => n.id === editingConnectorId ? { ...n, data: { ...n.data, app: connApp, action: connAction, label: connLabel, config: connConfig } } : n)); setEditingConnectorId(null); autoSave() }
-  function cambiarAccionConector(action) { setConnAction(action); const def = CONNECTOR_ACTIONS.find(a => a.app === connApp && a.action === action); setConnConfig(defaultConfigFor(def)) }
+  function cambiarAccionConector(action) { setConnAction(action); const def = CONNECTOR_ACTIONS.find(a => a.app === connApp && a.action === action); setConnConfig(defaultConfigFor(def)); setPayloadOpen(false); setPayloadErrores({}) }
   function setConnCfg(key, val) { setConnConfig(cfg => ({ ...cfg, [key]: val })) }
   function guardarConexion(conn) {
     const t = (conn.name || '').trim()
@@ -876,6 +878,34 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     const url = String(connConfig.url || '').trim()
     const method = String(connConfig.method || 'POST').trim().toUpperCase()
     if (!/^https?:\/\//i.test(url)) { showToast('Falta la URL del endpoint', 'error'); return }
+    // Validar el payload ANTES de enviar: solo se marcan los renglones con error
+    // y se expande el editor para corregirlos.
+    if (connApp === 'rest') {
+      const validos = new Set()
+      for (const p of nodes) {
+        if (!edges.some(e => e.target === editingConnectorId && e.source === p.id)) continue
+        for (const o of Object.keys(getNodeOutputs(p))) validos.add(o)
+      }
+      const errores = {}
+      ;(connConfig.body || []).forEach((item, i) => {
+        const nombre = String(item.key || '').trim()
+        const valor = String(item.value ?? '')
+        if (!nombre) {
+          errores[i] = 'Falta el nombre del campo. Escribí cómo se llama el dato.'
+        } else {
+          const refs = [...valor.matchAll(/\{([^{}]+)\}/g)].map(m => m[1]).filter(r => !r.startsWith('email_tarea'))
+          const malas = refs.filter(r => !validos.has(r))
+          if (malas.length) errores[i] = `${malas.map(m => `{${m}}`).join(', ')} no disponible. Conectá un nodo que entregue ese dato o escribí el valor a mano.`
+        }
+      })
+      if (Object.keys(errores).length) {
+        setPayloadErrores(errores)
+        setPayloadOpen(true)
+        showToast('Revisá los campos del payload marcados en rojo', 'error')
+        return
+      }
+    }
+    setPayloadErrores({})
     const payload = bodyAPayload(connConfig.body)
     const headers = construirHeaders(connConfig)
     setConnTesting(true); setConnTestResult(null)
@@ -1255,31 +1285,69 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                 ) : f.type === 'typed' ? (
                   <div key={f.key}>
                     <FieldLabel label={f.label} help={f.help} />
-                    <div className="space-y-1.5">
-                      {(connConfig[f.key] || []).map((item, i) => {
-                        const esArrayRequerido = ARRAY_FIELD_NAMES.includes(String(item.key || '').trim())
-                        const tipoMal = esArrayRequerido && (item.type !== 'array')
-                        return (
-                          <div key={i}>
-                            <div className="flex gap-1.5 items-start">
-                              <input value={item.key || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], key: e.target.value }; setConnCfg(f.key, arr) }} placeholder="campo" className="w-[30%] h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
-                              <select value={item.type || 'text'} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], type: e.target.value }; setConnCfg(f.key, arr) }} className={`w-[22%] h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 ${tipoMal ? 'border-red-400 text-red-600' : 'focus:ring-blue-200'}`}>
-                                <option value="text">texto</option>
-                                <option value="number">numero</option>
-                                <option value="boolean">booleano</option>
-                                <option value="array">array</option>
-                              </select>
-                              <input value={item.value || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], value: e.target.value }; setConnCfg(f.key, arr) }} placeholder={item.type === 'array' ? '[1,2,3] o {campo}' : 'valor o {campo}'} className="flex-1 h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
-                              <button type="button" title="Quitar" onClick={() => setConnCfg(f.key, (connConfig[f.key] || []).filter((_, j) => j !== i))} className="w-8 h-8 rounded-md border hover:bg-gray-50 text-gray-400 flex items-center justify-center shrink-0"><X size={12} /></button>
-                            </div>
-                            {tipoMal && (
-                              <div className="text-[10px] text-red-600 mt-0.5">Este campo debe ser tipo array.</div>
-                            )}
+                    {connApp === 'rest' ? (
+                      <div>
+                        <button type="button" onClick={() => { setPayloadOpen(!payloadOpen); setPayloadErrores({}) }} className="w-full flex items-center justify-between gap-2 h-9 px-3 rounded-md border text-xs text-gray-600 hover:bg-gray-50">
+                          <span className="flex items-center gap-1.5">
+                            {payloadOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            <span>Datos que se envían</span>
+                            <span className="text-gray-300">·</span>
+                            <span className="text-gray-400">{(connConfig[f.key] || []).length || 0} campo{(connConfig[f.key] || []).length === 1 ? '' : 's'}</span>
+                          </span>
+                          <span className="text-[10px] text-gray-400">{payloadOpen ? 'Ocultar' : 'Editar'}</span>
+                        </button>
+                        {payloadOpen && (
+                          <div className="mt-1.5 space-y-1.5">
+                            {(connConfig[f.key] || []).map((item, i) => {
+                              const err = payloadErrores[i]
+                              return (
+                                <div key={i}>
+                                  <div className="flex gap-1.5 items-start">
+                                    <input value={item.key || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], key: e.target.value }; setConnCfg(f.key, arr); if (payloadErrores[i]) { const n={...payloadErrores}; delete n[i]; setPayloadErrores(n) } }} placeholder="campo" className={`w-[30%] h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono ${err ? 'border-red-400' : ''}`} />
+                                    <select value={item.type || 'text'} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], type: e.target.value }; setConnCfg(f.key, arr) }} className="w-[22%] h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200">
+                                      <option value="text">texto</option>
+                                      <option value="number">numero</option>
+                                      <option value="boolean">booleano</option>
+                                      <option value="array">array</option>
+                                    </select>
+                                    <input value={item.value || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], value: e.target.value }; setConnCfg(f.key, arr); if (payloadErrores[i]) { const n={...payloadErrores}; delete n[i]; setPayloadErrores(n) } }} placeholder={item.type === 'array' ? '[1,2,3] o {campo}' : 'valor o {campo}'} className={`flex-1 h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono ${err ? 'border-red-400' : ''}`} />
+                                    <button type="button" title="Quitar" onClick={() => { setConnCfg(f.key, (connConfig[f.key] || []).filter((_, j) => j !== i)); if (payloadErrores[i]) { const n={...payloadErrores}; delete n[i]; setPayloadErrores(n) } }} className="w-8 h-8 rounded-md border hover:bg-gray-50 text-gray-400 flex items-center justify-center shrink-0"><X size={12} /></button>
+                                  </div>
+                                  {err && <div className="flex items-start gap-1 text-[10px] text-red-600 mt-0.5"><AlertTriangle size={11} className="shrink-0 mt-px" />{err}</div>}
+                                </div>
+                              )
+                            })}
+                            <button type="button" onClick={() => setConnCfg(f.key, [...(connConfig[f.key] || []), { key: '', type: 'text', value: '' }])} className="w-full flex items-center justify-center gap-1.5 h-8 rounded-md border border-dashed hover:bg-gray-50 text-xs text-gray-500"><Plus size={12} />Agregar campo al payload</button>
                           </div>
-                        )
-                      })}
-                      <button type="button" onClick={() => setConnCfg(f.key, [...(connConfig[f.key] || []), { key: '', type: 'text', value: '' }])} className="w-full flex items-center justify-center gap-1.5 h-8 rounded-md border border-dashed hover:bg-gray-50 text-xs text-gray-500"><Plus size={12} />Agregar campo al payload</button>
-                    </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {(connConfig[f.key] || []).map((item, i) => {
+                          const esArrayRequerido = ARRAY_FIELD_NAMES.includes(String(item.key || '').trim())
+                          const tipoMal = esArrayRequerido && (item.type !== 'array')
+                          return (
+                            <div key={i}>
+                              <div className="flex gap-1.5 items-start">
+                                <input value={item.key || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], key: e.target.value }; setConnCfg(f.key, arr) }} placeholder="campo" className="w-[30%] h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                                <select value={item.type || 'text'} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], type: e.target.value }; setConnCfg(f.key, arr) }} className={`w-[22%] h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 ${tipoMal ? 'border-red-400 text-red-600' : 'focus:ring-blue-200'}`}>
+                                  <option value="text">texto</option>
+                                  <option value="number">numero</option>
+                                  <option value="boolean">booleano</option>
+                                  <option value="array">array</option>
+                                </select>
+                                <input value={item.value || ''} onChange={e => { const arr = [...(connConfig[f.key] || [])]; arr[i] = { ...arr[i], value: e.target.value }; setConnCfg(f.key, arr) }} placeholder={item.type === 'array' ? '[1,2,3] o {campo}' : 'valor o {campo}'} className="flex-1 h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                                <button type="button" title="Quitar" onClick={() => setConnCfg(f.key, (connConfig[f.key] || []).filter((_, j) => j !== i))} className="w-8 h-8 rounded-md border hover:bg-gray-50 text-gray-400 flex items-center justify-center shrink-0"><X size={12} /></button>
+                              </div>
+                              {tipoMal && (
+                                <div className="text-[10px] text-red-600 mt-0.5">Este campo debe ser tipo array.</div>
+                              )}
+                            </div>
+                          )
+                        })}
+                        <button type="button" onClick={() => setConnCfg(f.key, [...(connConfig[f.key] || []), { key: '', type: 'text', value: '' }])} className="w-full flex items-center justify-center gap-1.5 h-8 rounded-md border border-dashed hover:bg-gray-50 text-xs text-gray-500"><Plus size={12} />Agregar campo al payload</button>
+                      </div>
+                    )}
                   </div>
                 ) : f.type === 'auth' ? (
                   <div key={f.key}>
@@ -1435,9 +1503,9 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                     </div>
                   </div>
                 )}
-                {connApp === 'rest' && (connConfig.body || []).length > 0 && (
+                {connApp === 'rest' && payloadOpen && (connConfig.body || []).length > 0 && (
                   <div>
-                    <div className="text-[11px] font-medium text-gray-500 mb-1">Payload que se enviará:</div>
+                    <div className="text-[11px] font-medium text-gray-500 mb-1">Vista previa de lo que se enviará:</div>
                     <pre className="rounded-md border p-2 text-[10px] font-mono whitespace-pre-wrap break-all" style={{ borderColor: '#e2e8f0', background: '#0f172a', color: '#a5f3fc' }}>{JSON.stringify(payloadPreview, null, 2)}</pre>
                   </div>
                 )}
