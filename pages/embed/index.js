@@ -739,22 +739,23 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     setSaving(true)
     setSaveState('saving')
     const body = { title, description, nodes: n || nodes, edges: e || edges, shares, connections: connectionsRef.current }
-    doPatch(body).then(ok => {
-      if (ok) { setSaveState('saved'); showToast('Cambios guardados') }
+    doPatch(body).then(res => {
+      if (res.ok) { setSaveState('saved'); showToast(res.connectionsSaved ? 'Cambios guardados' : 'Cambios guardados. Las conexiones no se pudieron guardar (revisa la base de datos).', res.connectionsSaved ? 'success' : 'error') }
       else { setSaveState('error'); showToast('Error al guardar. Revisa tu conexión.', 'error') }
     }).finally(() => setSaving(false))
   }
   async function doPatch(body) {
     try {
       const r = await fetch(api(wsId, `/${flowId}`, ident), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      if (r.ok) return true
-      if (!r.ok && body.connections && body.connections.length >= 0) {
+      if (r.ok) return { ok: true, connectionsSaved: true }
+      const tieneConexiones = Array.isArray(body.connections) && body.connections.length >= 0
+      if (tieneConexiones) {
         const { connections: _drop, ...rest } = body
         const r2 = await fetch(api(wsId, `/${flowId}`, ident), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rest) })
-        return r2.ok
+        if (r2.ok) return { ok: true, connectionsSaved: false }
       }
-      return false
-    } catch { return false }
+      return { ok: false }
+    } catch { return { ok: false } }
   }
   function autoSave(n, e) { setSaveState('dirty'); if (saveTimer.current) clearTimeout(saveTimer.current); saveTimer.current = setTimeout(() => save(n, e), 800) }
 
