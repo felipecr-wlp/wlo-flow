@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS public.flows (
   nodes         jsonb DEFAULT '[]'::jsonb,
   edges         jsonb DEFAULT '[]'::jsonb,
   shares        jsonb DEFAULT '[]'::jsonb,
+  connections   jsonb DEFAULT '[]'::jsonb,
   created_at    timestamptz NOT NULL DEFAULT now(),
   updated_at    timestamptz NOT NULL DEFAULT now(),
   owner         text NOT NULL DEFAULT ''

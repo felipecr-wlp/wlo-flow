@@ -10,7 +10,7 @@ import {
   Save, Trash2, Type, Code, Link as LinkIcon, FileText, Pencil,
   Square, Circle, Minus, Grid3X3, ChevronDown, ChevronUp, Copy, Undo2, Redo2,
    Lock, Unlock, ArrowUp, ArrowDown, Maximize, Download, Upload, Eye, Edit3, Code2,
-  X, HelpCircle, Share2, Plus, PenTool, Layout, Hand, Search, Check,
+  X, HelpCircle, Share2, Plus, PenTool, Layout, Hand, Search, Check, Settings,
   AlertTriangle, RefreshCw, Plug, Send, UserPlus, List as ListIcon, Play, Home,
 } from 'lucide-react'
 
@@ -32,16 +32,16 @@ const CONNECTOR_ACTIONS = [
   {
     app: 'wli', action: 'emailer/create_campaign', label: 'Crear campaña', icon: <Send size={14} />,
     fields: [
-      { key: 'name', label: 'Nombre de la campaña', default: 'Campana de prueba' },
-      { key: 'subject', label: 'Asunto del correo', default: 'Asunto de prueba' },
-      { key: 'html', label: 'HTML de la campaña', default: '<h1>Hola</h1>' },
-      { key: 'list_names', label: 'Listas por nombre (separadas por coma)', default: 'Prospectos comerciales' },
-      { key: 'list_ids', label: 'IDs de lista (UUIDs, separados por coma)', default: '' },
-      { key: 'segment_categorias', label: 'Segmentos por categoria (separados por coma)', default: '' },
-      { key: 'segment_temperaturas', label: 'Temperaturas (multi-seleccion)', type: 'multiselect', options: ['caliente', 'tibio', 'frio', 'congelado', 'sin_enviar'], default: '' },
-      { key: 'from_email', label: 'Email remitente (opcional)', default: '' },
-      { key: 'from_name', label: 'Nombre remitente (opcional)', default: '' },
-      { key: 'reply_to', label: 'Responder a (opcional)', default: '' },
+      { key: 'name', label: 'Nombre de la campaña', help: 'Un nombre para identificar esta campaña. Ej: Lanzamiento julio.', default: 'Campana de prueba' },
+      { key: 'subject', label: 'Asunto del correo', help: 'El título que verán quienes reciban el correo.', default: 'Asunto de prueba' },
+      { key: 'html', label: 'HTML de la campaña', help: 'El contenido del correo en código HTML.', default: '<h1>Hola</h1>' },
+      { key: 'list_names', label: 'Listas por nombre', help: 'A qué listas de contactos enviar. Varias listas, separadas por coma.', default: 'Prospectos comerciales' },
+      { key: 'list_ids', label: 'IDs de lista', help: 'Identificadores técnicos de las listas (si tu sistema los usa).', default: '' },
+      { key: 'segment_categorias', label: 'Segmentos por categoría', help: 'Filtrar por categoría de contacto.', default: '' },
+      { key: 'segment_temperaturas', label: 'Temperaturas', type: 'multiselect', options: ['caliente', 'tibio', 'frio', 'congelado', 'sin_enviar'], default: '', help: 'Qué tan "calientes" están los contactos. Elegí todas las que apliquen.' },
+      { key: 'from_email', label: 'Email del remitente', help: 'Desde qué correo se envía. Opcional.', default: '' },
+      { key: 'from_name', label: 'Nombre del remitente', help: 'Cómo aparece quien envía. Opcional.', default: '' },
+      { key: 'reply_to', label: 'Responder a', help: 'A qué correo llegan las respuestas. Opcional.', default: '' },
     ],
     arrayFields: ['list_names', 'list_ids', 'segment_categorias', 'segment_temperaturas'],
     outputs: ['name', 'subject', 'html', 'list_names', 'list_ids', 'segment_categorias', 'segment_temperaturas', 'from_email', 'from_name', 'reply_to'],
@@ -49,27 +49,27 @@ const CONNECTOR_ACTIONS = [
   {
     app: 'wli', action: 'emailer/enroll_contact', label: 'Enrolar contacto', icon: <UserPlus size={14} />,
     fields: [
-      { key: 'sequence_id', label: 'ID de secuencia' },
-      { key: 'email', label: 'Email o {email_tarea}' },
+      { key: 'sequence_id', label: 'ID de la secuencia', help: 'A qué secuencia (secuencia de correos) se agrega el contacto.' },
+      { key: 'email', label: 'Email', help: 'El correo del contacto. Podés escribir {email_tarea} para usar el de la tarea.' },
     ],
     outputs: ['sequence_id', 'email'],
   },
   {
     app: 'wli', action: 'emailer/list_sequences', label: 'Listar secuencias', icon: <ListIcon size={14} />,
     fields: [
-      { key: 'secuencias', label: 'Secuencias a usar', type: 'seqselect', default: [] },
-      { key: 'solo_activas', label: 'Solo activas', type: 'check' },
+      { key: 'secuencias', label: 'Secuencias a usar', type: 'seqselect', default: [], help: 'La lista propuesta de secuencias que vas a usar en la campaña. Marcá cuáles activar y completá el contenido de cada una.' },
+      { key: 'solo_activas', label: 'Solo activas', type: 'check', help: 'Mostrar únicamente las secuencias que están activas.' },
     ],
     outputs: ['sequences', 'secuencias'],
   },
   {
     app: 'rest', action: 'webhook', label: 'Enviar a API REST', icon: <Plug size={14} />,
     fields: [
-      { key: 'url', label: 'URL del endpoint' },
-      { key: 'method', label: 'Método', type: 'select', options: ['POST', 'PUT', 'PATCH', 'DELETE', 'GET'] },
-      { key: 'auth_type', label: 'Autenticación', type: 'auth' },
-      { key: 'headers', label: 'Headers adicionales (clave -> valor)', type: 'fields' },
-      { key: 'body', label: 'Body / payload (campo -> valor o referencia)', type: 'typed' },
+      { key: 'url', label: 'Dirección (URL) del servicio', help: 'La dirección web exacta donde tu sistema recibe los datos. Ejemplo: https://miempresa.com/api/contactos' },
+      { key: 'method', label: 'Qué acción realizar', type: 'select', help: 'Cómo le decís al sistema qué hacer con los datos. Enviar (POST) y Modificar (PUT) son los más comunes.', options: ['POST', 'PUT', 'PATCH', 'DELETE', 'GET'] },
+      { key: 'auth_type', label: 'Cómo se identifica tu sistema', type: 'auth', help: 'Algunos sistemas piden una prueba de identidad para aceptar los datos. Solo elegí una si el servicio te la pidió.' },
+      { key: 'headers', label: 'Datos extra de identificación', type: 'fields', help: 'Campos adicionales que algunos sistemas piden. Si no sabés, dejalo vacío.' },
+      { key: 'body', label: 'Los datos que envías', type: 'typed', help: 'Los datos que vas a enviar, cada uno con su nombre y su valor. Podés escribir {campo} para usar datos de otro nodo.' },
     ],
   },
 ]
@@ -440,6 +440,27 @@ function copyTexto(texto) {
   return Promise.resolve(copyTextoLegacy(texto))
 }
 
+// Etiqueta reutilizable para campos de formulario, con signo de interrogación
+// que explica en lenguaje simple para qué sirve el campo cuando el usuario pasa
+// el mouse. Vale para cualquier input del editor, no solo conectores.
+function FieldLabel({ label, help, htmlFor, hint }) {
+  return (
+    <div className="flex items-center gap-1 mb-0.5">
+      <label htmlFor={htmlFor} className="text-[11px] text-gray-400 font-medium">{label}</label>
+      {help && (
+        <span className="group relative inline-flex">
+          <HelpCircle size={11} className="text-gray-300 hover:text-blue-500 cursor-help transition" />
+          <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1 w-56 rounded-md bg-gray-900 text-white text-[10px] leading-relaxed p-2 z-50 opacity-0 group-hover:opacity-100 transition shadow-lg whitespace-normal hidden sm:block">
+            {help}
+            <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+          </span>
+        </span>
+      )}
+      {hint && <span className="text-[10px] text-gray-300 ml-auto">{hint}</span>}
+    </div>
+  )
+}
+
 // Etiqueta de diagnostico: muestra que mando el embed (WLO) y en que modo cae
 // la herramienta. Sirve para saber con que datos se puede trabajar mientras WLO
 // de produccion no mande la sesion.
@@ -614,7 +635,10 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   const [showHelp, setShowHelp] = useState(false)
   const [showShare, setShowShare] = useState(false)
   const [showExport, setShowExport] = useState(false)
+  const [showConfig, setShowConfig] = useState(false)
   const [exportText, setExportText] = useState('')
+  const [connections, setConnections] = useState([])
+  const [connDraft, setConnDraft] = useState(null)
   const [shares, setShares] = useState([])
   const [editingNodeId, setEditingNodeId] = useState(null)
   const [nodeLabel, setNodeLabel] = useState(''); const [nodeContent, setNodeContent] = useState('')
@@ -674,9 +698,11 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   const saveTimer = useRef(null); const toastTimer = useRef(null)
   const nodesRef = useRef([])
   const saveStateRef = useRef(saveState)
+  const connectionsRef = useRef(connections)
 
   useEffect(() => { saveStateRef.current = saveState }, [saveState])
   useEffect(() => { nodesRef.current = nodes }, [nodes])
+  useEffect(() => { connectionsRef.current = connections }, [connections])
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type })
@@ -694,6 +720,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
         setNodes(f.nodes || [])
         setEdges(f.edges || [])
         setShares(f.shares || [])
+        setConnections(Array.isArray(f.connections) ? f.connections : [])
         // Solo lectura cuando el flujo no es del usuario y no estamos en demo:
         // un compartido lee pero no edita.
         setReadOnly(!esDuenoDe(f, wsId, ident))
@@ -709,11 +736,23 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     if (readOnly) return
     setSaving(true)
     setSaveState('saving')
-    const body = { title, description, nodes: n || nodes, edges: e || edges, shares }
-    fetch(api(wsId, `/${flowId}`, ident), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); setSaveState('saved'); showToast('Cambios guardados') })
-      .catch(() => { setSaveState('error'); showToast('Error al guardar. Revisa tu conexión.', 'error') })
-      .finally(() => setSaving(false))
+    const body = { title, description, nodes: n || nodes, edges: e || edges, shares, connections: connectionsRef.current }
+    doPatch(body).then(ok => {
+      if (ok) { setSaveState('saved'); showToast('Cambios guardados') }
+      else { setSaveState('error'); showToast('Error al guardar. Revisa tu conexión.', 'error') }
+    }).finally(() => setSaving(false))
+  }
+  async function doPatch(body) {
+    try {
+      const r = await fetch(api(wsId, `/${flowId}`, ident), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (r.ok) return true
+      if (!r.ok && body.connections && body.connections.length >= 0) {
+        const { connections: _drop, ...rest } = body
+        const r2 = await fetch(api(wsId, `/${flowId}`, ident), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rest) })
+        return r2.ok
+      }
+      return false
+    } catch { return false }
   }
   function autoSave(n, e) { setSaveState('dirty'); if (saveTimer.current) clearTimeout(saveTimer.current); saveTimer.current = setTimeout(() => save(n, e), 800) }
 
@@ -777,6 +816,30 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   function saveConnector() { if (!editingConnectorId) return; setNodes(nds => nds.map(n => n.id === editingConnectorId ? { ...n, data: { ...n.data, app: connApp, action: connAction, label: connLabel, config: connConfig } } : n)); setEditingConnectorId(null); autoSave() }
   function cambiarAccionConector(action) { setConnAction(action); const def = CONNECTOR_ACTIONS.find(a => a.app === connApp && a.action === action); setConnConfig(defaultConfigFor(def)) }
   function setConnCfg(key, val) { setConnConfig(cfg => ({ ...cfg, [key]: val })) }
+  function guardarConexion(conn) {
+    const t = (conn.name || '').trim()
+    if (!t) { showToast('Poné un nombre a la conexión', 'error'); return }
+    setConnections(prev => {
+      const idx = prev.findIndex(c => c.id === conn.id)
+      if (idx >= 0) return prev.map((c, i) => i === idx ? conn : c)
+      return [...prev, { ...conn, id: conn.id || `conn-${Date.now() }` }]
+    })
+    autoSave()
+    setConnDraft(null)
+    showToast('Conexión guardada')
+  }
+  function eliminarConexion(id) { setConnections(prev => prev.filter(c => c.id !== id)); autoSave(); showToast('Conexión eliminada') }
+  function aplicarConexion(conn) {
+    if (!conn) return
+    setConnCfg('url', conn.url || `https://${conn.url || ''}`)
+    setConnCfg('method', conn.method || 'POST')
+    setConnCfg('auth_type', conn.auth_type || 'none')
+    if (conn.auth_type === 'bearer') setConnCfg('auth_token', conn.auth_token || '')
+    else if (conn.auth_type === 'api_key') { setConnCfg('auth_key_name', conn.auth_key_name || ''); setConnCfg('auth_key_value', conn.auth_key_value || '') }
+    else if (conn.auth_type === 'basic') { setConnCfg('auth_user', conn.auth_user || ''); setConnCfg('auth_pass', conn.auth_pass || '') }
+    setConnCfg('headers', Array.isArray(conn.headers) ? conn.headers.map(h => ({ ...h })) : [])
+    showToast(`Conexión "${conn.name}" aplicada`)
+  }
   function predecesoresDe(nodeId) {
     return nodes.filter(n => edges.some(e => e.target === nodeId && e.source === n.id))
   }
@@ -977,6 +1040,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
         <button onClick={handleExport} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Download size={14} />Exportar</button>
         {!readOnly && <button onClick={handleImport} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Upload size={14} />Importar</button>}
         {!readOnly && <button onClick={() => setShowShare(true)} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Share2 size={14} />Compartir</button>}
+        {!readOnly && <button onClick={() => setShowConfig(true)} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 h-8 px-3 py-1 text-sm"><Settings size={14} />Configuración</button>}
         <div
           title={`Parametros recibidos del embed:\n${JSON.stringify(embedInfo, null, 2)}`}
           style={{ fontSize: 10, color: '#64748b', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240, cursor: 'help' }}
@@ -1112,23 +1176,48 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
           </div>
           {(() => { const def = CONNECTOR_ACTIONS.find(a => a.app === connApp && a.action === connAction); if (!def) return null; return (
             <div>
+              {connApp === 'rest' && (
+                <div className="mb-3 rounded-md border border-dashed border-gray-200 p-2.5">
+                  <FieldLabel label="Conexión guardada (opcional)" help="Si ya guardaste este servicio en Configuración, elegilo acá y los datos se cargan solos. Si no, completa los campos manualmente." />
+                  {connections.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 mt-1">No hay conexiones guardadas. Podés crear una en el botón "Configuración" de arriba.</p>
+                  ) : (
+                    <select
+                      value=""
+                      onChange={e => { const c = connections.find(x => x.id === e.target.value); if (c) aplicarConexion(c) }}
+                      className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+                    >
+                      <option value="">Elegí una conexión guardada...</option>
+                      {connections.map(c => <option key={c.id} value={c.id}>{c.name} · {c.method} · {c.url}</option>)}
+                    </select>
+                  )}
+                </div>
+              )}
               <label className="text-xs font-medium text-gray-500 mb-1 block">Configuración</label>
               <div className="space-y-2">
                 {def.fields.map(f => f.type === 'check' ? (
-                  <label key={f.key} className="flex items-center gap-2 text-sm text-gray-600">
-                    <input type="checkbox" checked={!!connConfig[f.key]} onChange={e => setConnCfg(f.key, e.target.checked)} className="w-4 h-4" />
-                    {f.label}
-                  </label>
+                  <div key={f.key}>
+                    <label className="flex items-center gap-2 text-sm text-gray-600">
+                      <input type="checkbox" checked={!!connConfig[f.key]} onChange={e => setConnCfg(f.key, e.target.checked)} className="w-4 h-4" />
+                      {f.label}
+                      {f.help && (
+                        <span className="group relative inline-flex">
+                          <HelpCircle size={11} className="text-gray-300 hover:text-blue-500 cursor-help transition" />
+                          <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1 w-56 rounded-md bg-gray-900 text-white text-[10px] leading-relaxed p-2 z-50 opacity-0 group-hover:opacity-100 transition shadow-lg hidden sm:block">{f.help}</span>
+                        </span>
+                      )}
+                    </label>
+                  </div>
                 ) : f.type === 'select' ? (
                   <div key={f.key}>
-                    <label className="text-[11px] text-gray-400 block mb-0.5">{f.label}</label>
+                    <FieldLabel label={f.label} help={f.help} />
                     <select value={connConfig[f.key] || 'POST'} onChange={e => setConnCfg(f.key, e.target.value)} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200">
                       {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
                   </div>
                 ) : f.type === 'multiselect' ? (
                   <div key={f.key}>
-                    <label className="text-[11px] text-gray-400 block mb-0.5">{f.label}</label>
+                    <FieldLabel label={f.label} help={f.help} />
                     <div className="flex flex-wrap gap-1.5">
                       {(f.options || []).map(o => {
                         const activos = String(connConfig[f.key] || '').split(',').map(x => x.trim()).filter(Boolean)
@@ -1151,7 +1240,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                   </div>
                 ) : f.type === 'fields' ? (
                   <div key={f.key}>
-                    <label className="text-[11px] text-gray-400 block mb-1">{f.label}</label>
+                    <FieldLabel label={f.label} help={f.help} />
                     <div className="space-y-1.5">
                       {(connConfig[f.key] || []).map((item, i) => (
                         <div key={i} className="flex gap-1.5">
@@ -1165,7 +1254,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                   </div>
                 ) : f.type === 'typed' ? (
                   <div key={f.key}>
-                    <label className="text-[11px] text-gray-400 block mb-1">{f.label}</label>
+                    <FieldLabel label={f.label} help={f.help} />
                     <div className="space-y-1.5">
                       {(connConfig[f.key] || []).map((item, i) => {
                         const esArrayRequerido = ARRAY_FIELD_NAMES.includes(String(item.key || '').trim())
@@ -1194,27 +1283,27 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                   </div>
                 ) : f.type === 'auth' ? (
                   <div key={f.key}>
-                    <label className="text-[11px] text-gray-400 block mb-1">{f.label}</label>
+                    <FieldLabel label={f.label} help={f.help} />
                     <select value={connConfig[f.key] || 'none'} onChange={e => setConnCfg(f.key, e.target.value)} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200">
-                      <option value="none">Sin autenticación</option>
-                      <option value="bearer">Bearer Token</option>
-                      <option value="api_key">API Key</option>
-                      <option value="basic">Basic Auth</option>
+                      <option value="none">Ninguna, acceso público</option>
+                      <option value="bearer">Token de acceso (Bearer)</option>
+                      <option value="api_key">Clave de API (API Key)</option>
+                      <option value="basic">Usuario y contraseña</option>
                     </select>
                     {(connConfig[f.key] || 'none') === 'bearer' && (
                       <div className="mt-1.5">
-                        <label className="text-[10px] text-gray-400 block mb-0.5">Token</label>
-                        <input value={connConfig.auth_token || ''} onChange={e => setConnCfg('auth_token', e.target.value)} placeholder="pck_live_... o JWT" className="w-full h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                        <FieldLabel label="Tu token de acceso" help="La clave que te da el servicio para que te reconozca. Ej: pck_live_..." />
+                        <input value={connConfig.auth_token || ''} onChange={e => setConnCfg('auth_token', e.target.value)} placeholder="pck_live_... o tu token" className="w-full h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
                       </div>
                     )}
                     {(connConfig[f.key] || 'none') === 'api_key' && (
                       <div className="grid grid-cols-2 gap-1.5 mt-1.5">
                         <div>
-                          <label className="text-[10px] text-gray-400 block mb-0.5">Nombre del header</label>
+                          <FieldLabel label="Nombre de la clave" help="El nombre del campo que pide el servicio. Ej: X-Api-Key" />
                           <input value={connConfig.auth_key_name || ''} onChange={e => setConnCfg('auth_key_name', e.target.value)} placeholder="X-Api-Key" className="w-full h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
                         </div>
                         <div>
-                          <label className="text-[10px] text-gray-400 block mb-0.5">Valor</label>
+                          <FieldLabel label="Valor de la clave" help="La clave de acceso en sí, tal como te la dio el servicio." />
                           <input value={connConfig.auth_key_value || ''} onChange={e => setConnCfg('auth_key_value', e.target.value)} placeholder="clave-secreta" className="w-full h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
                         </div>
                       </div>
@@ -1222,11 +1311,11 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                     {(connConfig[f.key] || 'none') === 'basic' && (
                       <div className="grid grid-cols-2 gap-1.5 mt-1.5">
                         <div>
-                          <label className="text-[10px] text-gray-400 block mb-0.5">Usuario</label>
+                          <FieldLabel label="Usuario" />
                           <input value={connConfig.auth_user || ''} onChange={e => setConnCfg('auth_user', e.target.value)} className="w-full h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200" />
                         </div>
                         <div>
-                          <label className="text-[10px] text-gray-400 block mb-0.5">Contraseña</label>
+                          <FieldLabel label="Contraseña" />
                           <input type="password" value={connConfig.auth_pass || ''} onChange={e => setConnCfg('auth_pass', e.target.value)} className="w-full h-8 rounded-md border px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-blue-200" />
                         </div>
                       </div>
@@ -1234,7 +1323,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                   </div>
                 ) : f.type === 'seqselect' ? (
                   <div key={f.key}>
-                    <label className="text-[11px] text-gray-400 block mb-1">{f.label}</label>
+                    <FieldLabel label={f.label} help={f.help} />
                     <div className="space-y-2">
                       {(connConfig[f.key] || []).map((seq, i) => {
                         const s = (seq && typeof seq === 'object') ? seq : {}
@@ -1267,7 +1356,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
                 ) : (
                   <div key={f.key}>
                     <div className="flex items-center justify-between mb-0.5">
-                      <label className="text-[11px] text-gray-400">{f.label}</label>
+                      <span className="flex items-center gap-1"><FieldLabel label={f.label} help={f.help} /></span>
                       {f.key === 'html' && (
                         <span className="flex items-center gap-1">
                           <button type="button" onClick={() => { setPreviewFullHtml(String(connConfig[f.key] || '')); setPreviewFullIsCode(!connHtmlPreview); setPreviewFullSource({ type: 'connector', field: f.key }); setPreviewFull(true) }} className="flex items-center gap-1 text-[10px] rounded px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-600"><Maximize size={10} />Pantalla completa</button>
@@ -1463,6 +1552,74 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
           <iframe key="preview-full" srcDoc={previewFullHtml} className="flex-1 w-full" sandbox="allow-scripts" style={{ border: 0 }} title="Preview pantalla completa" />
         )}
       </div>}
+      {showConfig && <Modal onClose={() => setShowConfig(false)} title="Configuración general">
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1"><Plug size={14} className="text-violet-500" />Conexiones reutilizables</h3>
+              <button onClick={() => setConnDraft({ id: null, name: '', url: '', method: 'POST', auth_type: 'none', auth_token: '', auth_key_name: '', auth_key_value: '', auth_user: '', auth_pass: '', headers: [] })} className="inline-flex items-center gap-1 rounded-md border bg-white hover:bg-gray-50 px-3 py-1.5 text-xs"><Plus size={12} />Nueva conexión</button>
+            </div>
+            <p className="text-[11px] text-gray-400 mb-2">Guardá acá los servicios a los que querés conectar. Después, en cada nodo de conexión elegís uno de estos en vez de escribir todo de nuevo.</p>
+            {connections.length === 0 && !connDraft && (
+              <div className="rounded-md border border-dashed border-gray-200 p-4 text-center text-xs text-gray-400">Todavía no hay conexiones guardadas. Tocá "Nueva conexión" para crear la primera.</div>
+            )}
+            <div className="space-y-2">
+              {connections.map(c => (
+                <div key={c.id} className="flex items-center gap-2 rounded-md border px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-700 truncate">{c.name}</div>
+                    <div className="text-[11px] text-gray-400 truncate">{c.method || 'POST'} · {c.url || 'sin URL'} · {c.auth_type === 'none' ? 'sin identificación' : c.auth_type}</div>
+                  </div>
+                  <button title="Editar" onClick={() => setConnDraft({ ...c, headers: (c.headers || []).map(h => ({ ...h })) })} className="p-1.5 rounded hover:bg-gray-100 text-gray-500"><Pencil size={13} /></button>
+                  <button title="Eliminar" onClick={() => eliminarConexion(c.id)} className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 size={13} /></button>
+                </div>
+              ))}
+            </div>
+          </div>
+          {connDraft && (
+            <div className="rounded-md border bg-gray-50 p-3 space-y-2">
+              <div className="flex items-center justify-between"><h4 className="text-xs font-semibold text-gray-600">Nueva conexión</h4><button onClick={() => setConnDraft(null)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button></div>
+              <FieldLabel label="Nombre (para reconocerla)" help="Un nombre fácil de recordar, ej: Sistema de facturación" />
+              <input value={connDraft.name} onChange={e => setConnDraft({ ...connDraft, name: e.target.value })} placeholder="Ej: CRM principal" className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" />
+              <FieldLabel label="Dirección (URL) del servicio" help="La dirección web donde tu sistema recibe los datos. Si no lleva https://, lo agregamos por vos." />
+              <input value={connDraft.url} onChange={e => setConnDraft({ ...connDraft, url: e.target.value })} placeholder="miempresa.com/api/contactos" className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <FieldLabel label="Qué acción realiza" help="Cómo le decís al sistema qué hacer." />
+                  <select value={connDraft.method} onChange={e => setConnDraft({ ...connDraft, method: e.target.value })} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200">
+                    {['POST', 'PUT', 'PATCH', 'DELETE', 'GET'].map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <FieldLabel label="Cómo se identifica" help="Solo elegí una si el servicio te pidió una clave de acceso." />
+                  <select value={connDraft.auth_type} onChange={e => setConnDraft({ ...connDraft, auth_type: e.target.value })} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200">
+                    <option value="none">Sin identificación</option>
+                    <option value="bearer">Bearer Token</option>
+                    <option value="api_key">API Key</option>
+                    <option value="basic">Usuario y contraseña</option>
+                  </select>
+                </div>
+              </div>
+              {connDraft.auth_type === 'bearer' && (
+                <div><FieldLabel label="Token de acceso" help="La clave que te dio el servicio. Ej: pck_live_..." /><input type="password" value={connDraft.auth_token} onChange={e => setConnDraft({ ...connDraft, auth_token: e.target.value })} placeholder="pck_live_..." className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 font-mono" /></div>
+              )}
+              {connDraft.auth_type === 'api_key' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div><FieldLabel label="Nombre de la clave" help="El nombre del campo que pide el servicio. Ej: X-Api-Key" /><input value={connDraft.auth_key_name} onChange={e => setConnDraft({ ...connDraft, auth_key_name: e.target.value })} placeholder="X-Api-Key" className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 font-mono" /></div>
+                  <div><FieldLabel label="Valor de la clave" help="La clave de acceso en sí." /><input value={connDraft.auth_key_value} onChange={e => setConnDraft({ ...connDraft, auth_key_value: e.target.value })} placeholder="clave-secreta" className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 font-mono" /></div>
+                </div>
+              )}
+              {connDraft.auth_type === 'basic' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div><FieldLabel label="Usuario" /><input value={connDraft.auth_user} onChange={e => setConnDraft({ ...connDraft, auth_user: e.target.value })} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" /></div>
+                  <div><FieldLabel label="Contraseña" /><input type="password" value={connDraft.auth_pass} onChange={e => setConnDraft({ ...connDraft, auth_pass: e.target.value })} className="w-full h-9 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" /></div>
+                </div>
+              )}
+              <button onClick={() => guardarConexion(connDraft)} className="w-full h-9 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"><Save size={14} className="inline" /> Guardar conexión</button>
+            </div>
+          )}
+        </div>
+      </Modal>}
       {showExport && <Modal onClose={() => setShowExport(false)} title="Exportar flujo">
         <div className="space-y-3">
           <p className="text-xs text-gray-500">Copiá el contenido o descargá el archivo JSON:</p>

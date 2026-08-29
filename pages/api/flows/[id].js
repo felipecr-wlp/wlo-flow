@@ -70,6 +70,7 @@ export default async function handler(req, res) {
     if (req.body.nodes !== undefined) patch.nodes = req.body.nodes
     if (req.body.edges !== undefined) patch.edges = req.body.edges
     if (req.body.shares !== undefined) patch.shares = req.body.shares
+    if (req.body.connections !== undefined) patch.connections = req.body.connections
     patch.updated_at = new Date().toISOString()
 
     const { error } = await supabase.from('flows').update(patch).eq('id', id)
