@@ -78,6 +78,11 @@ const CONNECTOR_APPS = [...new Set(CONNECTOR_ACTIONS.map(a => a.app))]
 // Nombres de campo que SIEMPRE deben ir como array en el payload REST.
 const ARRAY_FIELD_NAMES = ['list_names', 'list_ids', 'segment_categorias', 'segment_temperaturas']
 
+// Referencia {campo} con UNA llave: se resuelve con las salidas de los nodos
+// anteriores. Las DOBLES llaves ({{ .Subscriber.Email }}) son plantillas que
+// WLI resuelve al enviar el correo: van TAL CUAL, sin validar ni interpolar.
+const REF_SINGLE_BRACE = /(?<!\{)\{([^{}]+)\}(?!\})/g
+
 /** Config inicial de una accion con sus valores por defecto. */
 function defaultConfigFor(def) {
   const cfg = {}
@@ -894,7 +899,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
         if (!nombre) {
           errores[i] = 'Falta el nombre del campo. Escribí cómo se llama el dato.'
         } else {
-          const refs = [...valor.matchAll(/\{([^{}]+)\}/g)].map(m => m[1]).filter(r => !r.startsWith('email_tarea'))
+          const refs = [...valor.matchAll(REF_SINGLE_BRACE)].map(m => m[1]).filter(r => !r.startsWith('email_tarea'))
           const malas = refs.filter(r => !validos.has(r))
           if (malas.length) errores[i] = `${malas.map(m => `{${m}}`).join(', ')} no disponible. Conectá un nodo que entregue ese dato o escribí el valor a mano.`
         }
@@ -993,7 +998,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
         const body = config.body.map(item => {
           let v = item.value ?? ''
           if (typeof v === 'string' && v.includes('{')) {
-            v = v.replace(/\{([^}]+)\}/g, (_, campo) => (merged[campo] !== undefined ? String(merged[campo]) : ''))
+            v = v.replace(REF_SINGLE_BRACE, (_, campo) => (merged[campo] !== undefined ? String(merged[campo]) : ''))
           }
           return { ...item, value: v }
         })
