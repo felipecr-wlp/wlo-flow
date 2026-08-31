@@ -79,9 +79,12 @@ const CONNECTOR_APPS = [...new Set(CONNECTOR_ACTIONS.map(a => a.app))]
 const ARRAY_FIELD_NAMES = ['list_names', 'list_ids', 'segment_categorias', 'segment_temperaturas']
 
 // Referencia {campo} con UNA llave: se resuelve con las salidas de los nodos
-// anteriores. Las DOBLES llaves ({{ .Subscriber.Email }}) son plantillas que
-// WLI resuelve al enviar el correo: van TAL CUAL, sin validar ni interpolar.
-const REF_SINGLE_BRACE = /(?<!\{)\{([^{}]+)\}(?!\})/g
+// anteriores. Solo cuenta si el contenido es un identificador (letras/numeros/
+// guion bajo): {nombre}, {email_tarea}. El contenido de otros nodos que traiga
+// llaves de otra cosa (HTML/CSS, plantillas de WLI con {{ .Subscriber.Email }},
+// bloques CSS { margin: 0; ... }) se trata como texto plano y NO se valida ni
+// se interpola: viaja tal cual hacia WLI.
+const REF_SINGLE_BRACE = /(?<!\{)\{([A-Za-z0-9_]+)\}(?!\})/g
 
 /** Config inicial de una accion con sus valores por defecto. */
 function defaultConfigFor(def) {
