@@ -710,8 +710,24 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
   const saveStateRef = useRef(saveState)
   const connectionsRef = useRef(connections)
 
+  // Refs con el ultimo valor commiteado de los estados que se guardan. Los usa
+  // save() para no enviar valores viejos: autoSave agenda el guardado con un
+  // setTimeout, y si save() leyera title/nodes/edges del closure de ese render
+  // se irian los valores ANTERIORES al cambio (React commit-ed despues), con
+  // el PATCH respondiendo ok pero sin persistir nada. Los refs se actualizan
+  // en useEffect despues de cada render, asi cuando corre el guardado tienen
+  // siempre el estado fresco.
+  const titleRef = useRef(title)
+  const descriptionRef = useRef(description)
+  const edgesRef = useRef(edges)
+  const sharesRef = useRef(shares)
+
   useEffect(() => { saveStateRef.current = saveState }, [saveState])
   useEffect(() => { nodesRef.current = nodes }, [nodes])
+  useEffect(() => { edgesRef.current = edges }, [edges])
+  useEffect(() => { titleRef.current = title }, [title])
+  useEffect(() => { descriptionRef.current = description }, [description])
+  useEffect(() => { sharesRef.current = shares }, [shares])
   useEffect(() => { connectionsRef.current = connections }, [connections])
 
   function showToast(msg, type = 'success') {
@@ -746,7 +762,7 @@ function EditorView({ flowId, wsId, instId, ident, enmarcado, membersList, embed
     if (readOnly) return
     setSaving(true)
     setSaveState('saving')
-    const body = { title, description, nodes: n || nodes, edges: e || edges, shares, connections: connectionsRef.current }
+    const body = { title: titleRef.current, description: descriptionRef.current, nodes: n || nodesRef.current, edges: e || edgesRef.current, shares: sharesRef.current, connections: connectionsRef.current }
     doPatch(body).then(res => {
       if (res.ok) { setSaveState('saved'); showToast(res.connectionsSaved ? 'Cambios guardados' : 'Cambios guardados. Las conexiones no se pudieron guardar (revisa la base de datos).', res.connectionsSaved ? 'success' : 'error') }
       else { setSaveState('error'); showToast('Error al guardar. Revisa tu conexión.', 'error') }
